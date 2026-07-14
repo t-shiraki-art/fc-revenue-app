@@ -7,20 +7,16 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
 // ── 認証 ─────────────────────────────────────────────────────
 export const auth = {
-  // Googleログイン（リダイレクト方式）
   signInWithGoogle: () => supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
       redirectTo: window.location.origin,
-      queryParams: {
-        access_type: 'offline',
-        prompt: 'consent',
-      },
+      queryParams: { access_type: 'offline', prompt: 'consent' },
     },
   }),
-  signOut:          () => supabase.auth.signOut(),
-  getUser:          () => supabase.auth.getUser(),
-  onAuthStateChange:(cb) => supabase.auth.onAuthStateChange(cb),
+  signOut:           () => supabase.auth.signOut(),
+  getUser:           () => supabase.auth.getUser(),
+  onAuthStateChange: (cb) => supabase.auth.onAuthStateChange(cb),
 }
 
 // ── 店舗マスタ ────────────────────────────────────────────────
@@ -45,16 +41,30 @@ export const storesDB = {
   },
 }
 
-// ── 売上明細 ──────────────────────────────────────────────────
+// ── 売上明細（ページネーションで全件取得）─────────────────────
 export const monthlyDB = {
   getAll: async () => {
-    const { data, error } = await supabase.from('store_monthly').select('*').order('ym')
-    if (error) throw error
-    return data
+    let allData = []
+    let from = 0
+    const pageSize = 1000
+    while (true) {
+      const { data, error } = await supabase
+        .from('store_monthly')
+        .select('*')
+        .order('ym')
+        .range(from, from + pageSize - 1)
+      if (error) throw error
+      allData = allData.concat(data)
+      if (data.length < pageSize) break
+      from += pageSize
+    }
+    return allData
   },
   upsertMany: async (rows) => {
     for (let i = 0; i < rows.length; i += 1000) {
-      const { error } = await supabase.from('store_monthly').upsert(rows.slice(i,i+1000), { onConflict:'store_id,ym' })
+      const { error } = await supabase
+        .from('store_monthly')
+        .upsert(rows.slice(i, i + 1000), { onConflict:'store_id,ym' })
       if (error) throw error
     }
   },
