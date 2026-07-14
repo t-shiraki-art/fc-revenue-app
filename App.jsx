@@ -1072,6 +1072,7 @@ function MasterTab({ appData, priceChanges, setPriceChanges }) {
   const [showAddForm,  setShowAddForm]  = useState(false);
   const [addForm,      setAddForm]      = useState(EMPTY_STORE());
   const [saveMsg,      setSaveMsg]      = useState("");
+  const [deleteModal,  setDeleteModal]  = useState(null); // { id, name }
 
   const prefs = useMemo(() => ["all", ...new Set(localStores.map(s=>s.pref).filter(Boolean))], [localStores]);
 
@@ -1142,6 +1143,15 @@ function MasterTab({ appData, priceChanges, setPriceChanges }) {
     flash("✓ 撤退日を登録しました");
   };
 
+  // 削除確認
+  const confirmDelete = () => {
+    if (!deleteModal) return;
+    setLocalStores(localStores.filter(s => s.id !== deleteModal.id));
+    setPriceChanges((priceChanges||[]).filter(c => c.storeId !== deleteModal.id));
+    setDeleteModal(null);
+    flash("✓ 店舗を削除しました");
+  };
+
   const flash = (msg, err=false) => {
     setSaveMsg(msg);
     setTimeout(() => setSaveMsg(""), 2500);
@@ -1190,6 +1200,24 @@ function MasterTab({ appData, priceChanges, setPriceChanges }) {
 
   return (
     <div>
+      {/* 削除確認モーダル */}
+      {deleteModal && (
+        <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.6)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:28,width:360,boxShadow:"0 8px 32px rgba(0,0,0,0.2)"}}>
+            <div style={{fontSize:15,fontWeight:700,color:C.text,marginBottom:8}}>店舗を削除しますか？</div>
+            <div style={{fontSize:13,color:C.textSub,marginBottom:6}}>
+              <span style={{fontWeight:600,color:C.red}}>{deleteModal.name}</span>
+            </div>
+            <div style={{fontSize:12,color:C.textMuted,marginBottom:20,padding:"10px 12px",background:C.redDim,borderRadius:6,border:`1px solid ${C.redBorder}`}}>
+              ⚠️ この操作は取り消せません。店舗の金額変更履歴もすべて削除されます。
+            </div>
+            <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+              <button onClick={()=>setDeleteModal(null)} style={{...btnSt(C.textSub),background:"transparent",border:`1px solid ${C.border}`,color:C.textSub,fontSize:12}}>キャンセル</button>
+              <button onClick={confirmDelete} style={{...btnSt(C.red),fontSize:12}}>削除する</button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* 撤退登録モーダル */}
       {retireModal && (
         <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.6)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -1392,6 +1420,10 @@ function MasterTab({ appData, priceChanges, setPriceChanges }) {
                       <button onClick={()=>startEdit(s)} style={{...btnSt(C.blue),fontSize:9,padding:"2px 8px"}}>編集</button>
                       <button onClick={()=>toggleRetire(s)} style={{...btnSt(isRetired?C.green:C.red),fontSize:9,padding:"2px 8px"}}>
                         {isRetired?"撤退解除":"撤退登録"}
+                      </button>
+                      <button onClick={()=>setDeleteModal({id:s.id, name:s.name})}
+                        style={{padding:"2px 8px",borderRadius:4,border:`1px solid ${C.border}`,background:"transparent",color:C.textMuted,fontSize:9,cursor:"pointer"}}>
+                        削除
                       </button>
                     </div>
                   </td>
