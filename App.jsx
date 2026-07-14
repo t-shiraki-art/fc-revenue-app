@@ -1671,26 +1671,24 @@ function PriceChangePanel({ store, priceChanges, setPriceChanges, months }) {
 // 現在の月次金額確認・修正パネル
 // ══════════════════════════════════════════════
 function CurrentAmountPanel({ store, months, onUpdate }) {
-  // 直近月を特定（データがある最後の月）
-  const latestYm = useMemo(() => {
-    const yms = months.filter(ym => store.monthly[ym] && Object.values(store.monthly[ym]).some(v => v > 0));
-    return yms.length > 0 ? yms[yms.length - 1] : months[months.length - 1];
-  }, [store, months]);
+  // データがある月だけ絞り込み
+  const dataMonths = useMemo(() =>
+    months.filter(ym => store.monthly[ym] && Object.values(store.monthly[ym]).some(v => v > 0)),
+    [store, months]
+  );
 
-  // 選択中の年月
+  const latestYm = dataMonths.length > 0 ? dataMonths[dataMonths.length - 1] : months[months.length - 1];
   const [selectedYm, setSelectedYm] = useState(latestYm || '');
-  // 編集中の金額
   const [editAmounts, setEditAmounts] = useState({});
   const [saved, setSaved] = useState(false);
 
-  // 選択月が変わったら金額を初期化
   const currentRow = store.monthly[selectedYm] || {};
 
   const handleSave = () => {
     const updatedMonthly = { ...store.monthly };
     const newRow = { ...currentRow };
     ITEMS.forEach(it => {
-      if (editAmounts[it.id] !== undefined) {
+      if (editAmounts[it.id] !== undefined && editAmounts[it.id] !== '') {
         newRow[it.id] = Number(editAmounts[it.id]) || 0;
       }
     });
@@ -1698,60 +1696,62 @@ function CurrentAmountPanel({ store, months, onUpdate }) {
     onUpdate({ ...store, monthly: updatedMonthly });
     setEditAmounts({});
     setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    setTimeout(() => setSaved(false), 2500);
   };
 
   const hasEdits = Object.keys(editAmounts).length > 0;
 
   return (
-    <tr style={{ background:'#FFFBEB' }}>
-      <td colSpan={11} style={{ padding:'12px 16px', borderBottom:`1px solid ${C.border}` }}>
-        <div style={{ fontSize:12, fontWeight:700, color:C.amber, marginBottom:10, display:'flex', alignItems:'center', gap:12 }}>
-          📋 現在の月次金額 — {store.name}
-          {saved && <span style={{ fontSize:11, color:C.green, fontWeight:600 }}>✓ 保存しました</span>}
+    <tr style={{ background:'#FFFDE7' }}>
+      <td colSpan={11} style={{ padding:'14px 18px', borderBottom:`2px solid ${C.amber}30` }}>
+        {/* ヘッダー */}
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+            <span style={{ fontSize:12, fontWeight:700, color:C.amber }}>📋 現在の月次金額 — {store.name}</span>
+            {saved && <span style={{ fontSize:11, color:C.green, fontWeight:600, background:'#D1FAE5', padding:'2px 8px', borderRadius:4 }}>✓ 保存しました</span>}
+          </div>
+          {/* 年月セレクター */}
+          <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+            <span style={{ fontSize:11, color:C.textMuted }}>確認月：</span>
+            <select value={selectedYm} onChange={e => { setSelectedYm(e.target.value); setEditAmounts({}); }}
+              style={{ ...selSt, fontSize:11, padding:'3px 8px' }}>
+              {[...months].reverse().map(ym => (
+                <option key={ym} value={ym}>{ym}{store.monthly[ym] ? '' : ' （データなし）'}</option>
+              ))}
+            </select>
+          </div>
         </div>
 
-        {/* 年月セレクター */}
-        <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
-          <span style={{ fontSize:11, color:C.textMuted }}>表示月：</span>
-          <select value={selectedYm} onChange={e => { setSelectedYm(e.target.value); setEditAmounts({}); }}
-            style={{ ...selSt, fontSize:11 }}>
-            {months.slice().reverse().map(ym => (
-              <option key={ym} value={ym}>{ym}</option>
-            ))}
-          </select>
-          <span style={{ fontSize:10, color:C.textMuted }}>の金額を確認・修正</span>
-        </div>
-
-        {/* 金額テーブル */}
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:8, marginBottom:12 }}>
+        {/* 金額グリッド */}
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:8, marginBottom:12 }}>
           {ITEMS.map(it => {
             const current = currentRow[it.id] || 0;
-            const edited = editAmounts[it.id] !== undefined ? editAmounts[it.id] : '';
-            const displayVal = edited !== '' ? edited : (current || '');
-            const isEdited = editAmounts[it.id] !== undefined;
+            const isEditing = editAmounts[it.id] !== undefined;
+            const inputVal = isEditing ? editAmounts[it.id] : '';
             return (
               <div key={it.id} style={{
-                padding:'8px 10px', borderRadius:8,
-                background: isEdited ? `${it.color}10` : C.surfaceHigh,
-                border: `1px solid ${isEdited ? it.color : C.border}`,
+                padding:'10px 12px', borderRadius:8,
+                background: isEditing ? `${it.color}10` : C.surface,
+                border: `1.5px solid ${isEditing ? it.color : C.border}`,
+                transition:'all .15s',
               }}>
-                <div style={{ display:'flex', alignItems:'center', gap:5, marginBottom:4 }}>
-                  <span style={{ display:'inline-block', width:6, height:6, borderRadius:3, background:it.color }} />
-                  <span style={{ fontSize:10, color:it.color, fontWeight:600 }}>{it.label}</span>
+                <div style={{ display:'flex', alignItems:'center', gap:5, marginBottom:6 }}>
+                  <span style={{ display:'inline-block', width:7, height:7, borderRadius:3.5, background:it.color }} />
+                  <span style={{ fontSize:11, color:it.color, fontWeight:600 }}>{it.label}</span>
                 </div>
-                <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                  <span style={{ fontSize:10, color:C.textMuted }}>現在：</span>
-                  <span style={{ fontSize:12, fontWeight:600, color:C.text }}>{current > 0 ? `¥${current.toLocaleString()}` : '—'}</span>
+                {/* 現在金額 */}
+                <div style={{ fontSize:14, fontWeight:700, color:current > 0 ? C.text : C.textMuted, marginBottom:6 }}>
+                  {current > 0 ? `¥${current.toLocaleString()}` : '—'}
                 </div>
-                <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:4 }}>
-                  <span style={{ fontSize:10, color:C.textMuted }}>修正：</span>
+                {/* 修正入力 */}
+                <div>
+                  <div style={{ fontSize:9, color:C.textMuted, marginBottom:2 }}>修正後の金額（円/月）</div>
                   <input
                     type="number"
-                    value={displayVal}
-                    placeholder="金額を入力"
+                    value={inputVal}
+                    placeholder={current > 0 ? String(current) : '例: 120000'}
                     onChange={e => setEditAmounts({ ...editAmounts, [it.id]: e.target.value })}
-                    style={{ ...inputSt, width:110, fontSize:11, textAlign:'right', padding:'3px 6px' }}
+                    style={{ ...inputSt, width:'100%', fontSize:11, textAlign:'right', padding:'4px 6px' }}
                   />
                 </div>
               </div>
@@ -1759,6 +1759,7 @@ function CurrentAmountPanel({ store, months, onUpdate }) {
           })}
         </div>
 
+        {/* 保存ボタン */}
         <div style={{ display:'flex', gap:8, alignItems:'center' }}>
           <button onClick={handleSave} disabled={!hasEdits} style={{
             ...btnSt(C.amber), fontSize:11,
@@ -1769,12 +1770,12 @@ function CurrentAmountPanel({ store, months, onUpdate }) {
           </button>
           {hasEdits && (
             <button onClick={() => setEditAmounts({})}
-              style={{ ...btnSt(C.textMuted), background:'transparent', border:`1px solid ${C.border}`, fontSize:11 }}>
+              style={{ ...btnSt(C.textMuted), background:'transparent', border:`1px solid ${C.border}`, color:C.textSub, fontSize:11 }}>
               リセット
             </button>
           )}
           <span style={{ fontSize:10, color:C.textMuted }}>
-            ※ 保存した金額は売上明細・期別サマリーに即時反映されます
+            修正した金額は売上明細・期別サマリーに即時反映されます
           </span>
         </div>
       </td>
