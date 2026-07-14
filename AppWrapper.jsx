@@ -1,7 +1,3 @@
-/**
- * AppWrapper.jsx
- * 認証管理 + Supabaseデータロード + App.jsxへのデータ注入
- */
 import { useState, useEffect, useCallback } from 'react'
 import App from './App.jsx'
 import AuthScreen from './AuthScreen.jsx'
@@ -12,26 +8,25 @@ const C = { bg:'#F5F6F8', red:'#E31F25', text:'#1A1D23', textMuted:'#9CA3AF', su
 export default function AppWrapper() {
   const [user,         setUser]         = useState(null)
   const [authChecked,  setAuthChecked]  = useState(false)
-  const [appData,      setAppData]      = useState(null)   // { stores, months, sheetName }
+  const [appData,      setAppData]      = useState(null)
   const [priceChanges, setPriceChanges] = useState([])
   const [loading,      setLoading]      = useState(false)
   const [loadMsg,      setLoadMsg]      = useState('')
-  const [saveStatus,   setSaveStatus]   = useState('')     // '', 'saving', 'saved', 'error'
+  const [saveStatus,   setSaveStatus]   = useState('')
 
-  // ── 認証状態の監視 ─────────────────────────────────────────
   useEffect(() => {
+    const { data: { subscription } } = auth.onAuthStateChange((event, session) => {
+      setUser(session?.user || null)
+      setAuthChecked(true)
+      if (event === 'SIGNED_OUT') { setAppData(null); setPriceChanges([]) }
+    })
     auth.getUser().then(({ data }) => {
       setUser(data.user || null)
       setAuthChecked(true)
     })
-    const { data: { subscription } } = auth.onAuthStateChange((event, session) => {
-      setUser(session?.user || null)
-      if (event === 'SIGNED_OUT') { setAppData(null); setPriceChanges([]) }
-    })
     return () => subscription.unsubscribe()
   }, [])
 
-  // ── ログイン後にDBからデータロード ────────────────────────
   useEffect(() => {
     if (user) loadFromDB()
   }, [user])
@@ -45,14 +40,11 @@ export default function AppWrapper() {
         monthlyDB.getAll(),
         priceChangesDB.getAll(),
       ])
-
       if (storeRows.length === 0) {
-        // DBが空 → アップロード画面を表示
         setAppData(null)
         setLoading(false)
         return
       }
-
       setLoadMsg('売上明細を組み立て中...')
       const monthlyMap = rowToMonthly(monthlyRows)
       const stores = storeRows.map(row => {
@@ -60,12 +52,9 @@ export default function AppWrapper() {
         s.monthly = monthlyMap[s.id] || {}
         return s
       })
-
-      // 全月リストを算出
       const monthSet = new Set()
       monthlyRows.forEach(r => monthSet.add(r.ym))
       const months = [...monthSet].sort()
-
       setAppData({ stores, months, sheetName: 'Supabaseから読み込み済み' })
       setPriceChanges(pcRows.map(rowToPriceChange))
     } catch (e) {
@@ -76,20 +65,15 @@ export default function AppWrapper() {
     setLoadMsg('')
   }
 
-  // ── XLSXアップロード後にDBへ保存 ──────────────────────────
   const handleXLSXLoaded = useCallback(async (data) => {
     setAppData(data)
     setSaveStatus('saving')
     try {
-      // 店舗マスタを保存
       await storesDB.upsertMany(data.stores)
-
-      // 売上明細を保存（全店舗分）
       const allMonthlyRows = data.stores.flatMap(s => monthlyToRows(s))
       if (allMonthlyRows.length > 0) {
         await monthlyDB.upsertMany(allMonthlyRows)
       }
-
       setSaveStatus('saved')
       setTimeout(() => setSaveStatus(''), 3000)
     } catch (e) {
@@ -98,7 +82,6 @@ export default function AppWrapper() {
     }
   }, [])
 
-  // ── 店舗マスタ更新をDBに反映 ──────────────────────────────
   const handleStoreUpdate = useCallback(async (updatedStore) => {
     try {
       await storesDB.upsert(updatedStore)
@@ -107,7 +90,6 @@ export default function AppWrapper() {
     }
   }, [])
 
-  // ── 金額変更履歴をDBに反映 ────────────────────────────────
   const handlePriceChangeAdd = useCallback(async (change) => {
     try {
       const row = await priceChangesDB.insert(change)
@@ -129,7 +111,6 @@ export default function AppWrapper() {
     }
   }, [])
 
-  // ── 未認証チェック中 ──────────────────────────────────────
   if (!authChecked) {
     return (
       <div style={{ fontFamily:"'Inter','Noto Sans JP',sans-serif", background:C.bg, minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center' }}>
@@ -141,10 +122,8 @@ export default function AppWrapper() {
     )
   }
 
-  // ── 未ログイン ─────────────────────────────────────────────
   if (!user) return <AuthScreen onLogin={setUser} />
 
-  // ── DBロード中 ─────────────────────────────────────────────
   if (loading) {
     return (
       <div style={{ fontFamily:"'Inter','Noto Sans JP',sans-serif", background:C.bg, minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center' }}>
@@ -157,10 +136,8 @@ export default function AppWrapper() {
     )
   }
 
-  // ── メインアプリ ───────────────────────────────────────────
   return (
     <div style={{ position:'relative' }}>
-      {/* DB保存ステータスバナー */}
       {saveStatus && (
         <div style={{
           position:'fixed', bottom:20, right:20, zIndex:9999,
@@ -175,8 +152,6 @@ export default function AppWrapper() {
           {saveStatus==='error'  && '⚠️ 保存に失敗しました'}
         </div>
       )}
-
-      {/* ログアウトボタン */}
       <button onClick={() => auth.signOut()} style={{
         position:'fixed', top:12, right:12, zIndex:200,
         padding:'4px 12px', borderRadius:6, border:'1px solid #E2E6EC',
@@ -184,7 +159,6 @@ export default function AppWrapper() {
       }}>
         {user.email} ／ ログアウト
       </button>
-
       <App
         initialData={appData}
         initialPriceChanges={priceChanges}
