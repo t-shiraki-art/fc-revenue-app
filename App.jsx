@@ -869,14 +869,28 @@ function StoreRow({ store, visibleMonths, periodStarts, visItems, expanded, onTo
 // ══════════════════════════════════════════════
 // 期別サマリータブ
 // ══════════════════════════════════════════════
-function SummaryTab({ appData, periods, periodStarts, priceChanges }) {
+function SummaryTab({ appData, periods, periodStarts, priceChanges, showItems, setShowItems }) {
   const { stores, months } = appData;
+
+  // 選択中の項目だけで合計（showItems変化で再計算）
+  const sumSelected = useCallback((tot) => {
+    if (!tot) return 0;
+    return ITEMS.reduce((s, it) => showItems[it.id] ? s + (tot[it.id]||0) : s, 0);
+  }, [showItems]);
+
+  // 前年比ラベル
+  const yoyLabel = (curr, prev) => {
+    if (!prev || prev === 0) return null;
+    const pct = ((curr - prev) / prev * 100);
+    const sign = pct >= 0 ? '+' : '';
+    const color = pct >= 0 ? C.green : C.red;
+    return { text: `${sign}${pct.toFixed(1)}%`, color };
+  };
 
   const periodData = useMemo(() => periods.map(pn => {
     const pMonths = months.filter(ym => getPeriodNum(ym) === pn);
-    const firstMonths  = pMonths.filter(ym => getHalf(ym) === 'first');  // 上期
-    const secondMonths = pMonths.filter(ym => getHalf(ym) === 'second'); // 下期
-
+    const firstMonths  = pMonths.filter(ym => getHalf(ym) === 'first');
+    const secondMonths = pMonths.filter(ym => getHalf(ym) === 'second');
     const calcTotal = (targetMonths) => {
       const t = {};
       ITEMS.forEach(it => { t[it.id] = 0; });
@@ -893,7 +907,6 @@ function SummaryTab({ appData, periods, periodStarts, priceChanges }) {
       });
       return t;
     };
-
     const storeData = stores.map(store => {
       const tot = {};
       ITEMS.forEach(it => { tot[it.id] = 0; });
@@ -910,82 +923,128 @@ function SummaryTab({ appData, periods, periodStarts, priceChanges }) {
       });
       return { store, tot, activeMonths };
     });
-
     const ptot = {};
     ITEMS.forEach(it => { ptot[it.id] = storeData.reduce((s,d) => s+d.tot[it.id], 0); });
     ptot._total = storeData.reduce((s,d) => s+d.tot._total, 0);
     const retiredCount = stores.filter(s => s.retireYM && getPeriodNum(s.retireYM) === pn).length;
     const activeCount  = storeData.filter(d => d.activeMonths > 0).length;
-
     const firstTot  = calcTotal(firstMonths);
     const secondTot = calcTotal(secondMonths);
-
     return { pn, pMonths, storeData, ptot, retiredCount, activeCount, firstTot, secondTot };
   }), [stores, months, periods, priceChanges]);
 
   const periodColors = [C.red, C.blue, C.green, C.purple, C.orange, C.teal];
-  const maxPeriodTotal = Math.max(...periodData.map(p => p.ptot._total), 1);
+  const maxPeriodTotal = Math.max(...periodData.map(p => sumSelected(p.ptot)), 1);
 
   return (
     <div>
-      {/* KPIカード */}
-      <div style={{ display:"grid", gridTemplateColumns:`repeat(${Math.min(periodData.length,4)},1fr)`, gap:12, marginBottom:16 }}>
-        {periodData.slice(0,4).map(({ pn, ptot, retiredCount, activeCount, pMonths, firstTot, secondTot }, pi) => (
-          <div key={pn} style={{
-            background:C.surface, border:`1px solid ${C.border}`,
-            borderTop:`3px solid ${periodColors[pi%6]}`,
-            borderRadius:10, padding:16,
-            boxShadow:"0 1px 4px rgba(0,0,0,0.04)",
-          }}>
-            <div style={{ fontSize:11, color:C.textMuted, marginBottom:4 }}>{pn}年度（{pMonths[0]}〜{pMonths[pMonths.length-1]}）</div>
-            <div style={{ fontSize:24, fontWeight:800, color:C.text, letterSpacing:"-0.5px" }}>{fmtM(ptot._total)}</div>
-            <div style={{ display:"flex", gap:10, marginTop:6, marginBottom:10, fontSize:11 }}>
-              <span style={{ color:C.green, fontWeight:500 }}>稼働 {activeCount}店</span>
-              {retiredCount > 0 && <span style={{ color:C.red, fontWeight:500 }}>撤退 {retiredCount}店</span>}
-            </div>
-
-            {/* 上期・下期内訳 */}
-            <div style={{ display:"flex", gap:6, marginBottom:10 }}>
-              <div style={{ flex:1, background:C.surfaceHigh, borderRadius:6, padding:"6px 8px" }}>
-                <div style={{ fontSize:10, color:C.textMuted, marginBottom:2 }}>▲ 上期（10〜3月）</div>
-                <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{fmtM(firstTot._total)}</div>
-              </div>
-              <div style={{ flex:1, background:C.surfaceHigh, borderRadius:6, padding:"6px 8px" }}>
-                <div style={{ fontSize:10, color:C.textMuted, marginBottom:2 }}>▽ 下期（4〜9月）</div>
-                <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{fmtM(secondTot._total)}</div>
-              </div>
-            </div>
-
-            {ITEMS.filter(it=>!it.adOnly).map(it => (
-              <div key={it.id} style={{ display:"flex", justifyContent:"space-between", padding:"3px 0", borderBottom:`1px solid ${C.borderLight}` }}>
-                <span style={{ fontSize:11, color:C.textSub, display:"flex", alignItems:"center", gap:5 }}>
-                  <span style={{ display:"inline-block", width:6, height:6, borderRadius:3, background:it.color }} />{it.label}
-                </span>
-                <span style={{ fontSize:11, fontWeight:600, color:C.text }}>{fmtM(ptot[it.id])}</span>
-              </div>
-            ))}
-            <div style={{ display:"flex", justifyContent:"space-between", padding:"3px 0", fontSize:11, color:C.textMuted }}>
-              <span>広告費</span><span>{fmtM(ptot.ad)}</span>
-            </div>
-          </div>
+      {/* 項目フィルター */}
+      <div style={{ display:"flex", gap:6, marginBottom:12, flexWrap:"wrap", alignItems:"center" }}>
+        <span style={{ fontSize:12, color:C.textMuted, fontWeight:600 }}>表示項目：</span>
+        <button onClick={() => setShowItems(Object.fromEntries(ITEMS.map(it=>[it.id,true])))}
+          style={{ ...btnSt(C.textSub), background:"transparent", border:`1px solid ${C.border}`, color:C.textSub, fontSize:11 }}>全選択</button>
+        {ITEMS.map(it => (
+          <button key={it.id} onClick={() => setShowItems({ ...showItems, [it.id]:!showItems[it.id] })}
+            style={{
+              padding:"3px 10px", borderRadius:16, fontSize:11, cursor:"pointer",
+              background: showItems[it.id] ? `${it.color}15` : "transparent",
+              color: showItems[it.id] ? it.color : C.textMuted,
+              border: `1px solid ${showItems[it.id] ? it.color : C.border}`,
+              fontWeight: showItems[it.id] ? 600 : 400,
+            }}>{it.label}</button>
         ))}
       </div>
 
-      {/* 年度別棒グラフ */}
+      {/* KPIカード */}
+      <div style={{ display:"grid", gridTemplateColumns:`repeat(${Math.min(periodData.length,4)},1fr)`, gap:12, marginBottom:16 }}>
+        {periodData.map(({ pn, ptot, retiredCount, activeCount, pMonths, firstTot, secondTot }, pi) => {
+          const prevPtot = pi > 0 ? periodData[pi-1].ptot : null;
+          const currTotal = sumSelected(ptot);
+          const prevTotal = prevPtot ? sumSelected(prevPtot) : null;
+          const yoy = yoyLabel(currTotal, prevTotal);
+          return (
+            <div key={pn} style={{
+              background:C.surface, border:`1px solid ${C.border}`,
+              borderTop:`3px solid ${periodColors[pi%6]}`,
+              borderRadius:10, padding:16,
+              boxShadow:"0 1px 4px rgba(0,0,0,0.04)",
+            }}>
+              <div style={{ fontSize:11, color:C.textMuted, marginBottom:4 }}>
+                {pn}年度（{pMonths[0]}〜{pMonths[pMonths.length-1]}）
+              </div>
+              <div style={{ display:"flex", alignItems:"flex-end", gap:8, marginBottom:6 }}>
+                <div style={{ fontSize:24, fontWeight:800, color:C.text, letterSpacing:"-0.5px" }}>{fmtM(currTotal)}</div>
+                {yoy && <div style={{ fontSize:13, fontWeight:700, color:yoy.color, marginBottom:3 }}>{yoy.text}</div>}
+              </div>
+              <div style={{ display:"flex", gap:10, marginBottom:10, fontSize:11 }}>
+                <span style={{ color:C.green, fontWeight:500 }}>稼働 {activeCount}店</span>
+                {retiredCount > 0 && <span style={{ color:C.red, fontWeight:500 }}>撤退 {retiredCount}店</span>}
+              </div>
+              {/* 上期・下期 */}
+              <div style={{ display:"flex", gap:6, marginBottom:10 }}>
+                {[
+                  { label:"▲ 上期（10〜3月）", tot:firstTot, prevTot:pi>0?periodData[pi-1].firstTot:null },
+                  { label:"▽ 下期（4〜9月）",  tot:secondTot, prevTot:pi>0?periodData[pi-1].secondTot:null },
+                ].map(({ label, tot, prevTot }) => {
+                  const v = sumSelected(tot);
+                  const hy = prevTot ? yoyLabel(v, sumSelected(prevTot)) : null;
+                  return (
+                    <div key={label} style={{ flex:1, background:C.surfaceHigh, borderRadius:6, padding:"6px 8px" }}>
+                      <div style={{ fontSize:10, color:C.textMuted, marginBottom:2 }}>{label}</div>
+                      <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{fmtM(v)}</div>
+                      {hy && <div style={{ fontSize:10, fontWeight:600, color:hy.color }}>{hy.text}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+              {/* 項目別 */}
+              {ITEMS.filter(it => showItems[it.id] && !it.adOnly).map(it => {
+                const v = ptot[it.id] || 0;
+                const iy = prevPtot ? yoyLabel(v, prevPtot[it.id]) : null;
+                return (
+                  <div key={it.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"3px 0", borderBottom:`1px solid ${C.borderLight}` }}>
+                    <span style={{ fontSize:11, color:C.textSub, display:"flex", alignItems:"center", gap:5 }}>
+                      <span style={{ display:"inline-block", width:6, height:6, borderRadius:3, background:it.color }} />{it.label}
+                    </span>
+                    <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                      {iy && <span style={{ fontSize:10, color:iy.color, fontWeight:600 }}>{iy.text}</span>}
+                      <span style={{ fontSize:11, fontWeight:600, color:C.text }}>{fmtM(v)}</span>
+                    </div>
+                  </div>
+                );
+              })}
+              {showItems['ad'] && (
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"3px 0", fontSize:11, color:C.textMuted }}>
+                  <span>広告費</span>
+                  <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                    {prevPtot && yoyLabel(ptot.ad, prevPtot.ad) && (
+                      <span style={{ fontSize:10, color:yoyLabel(ptot.ad, prevPtot.ad).color, fontWeight:600 }}>
+                        {yoyLabel(ptot.ad, prevPtot.ad).text}
+                      </span>
+                    )}
+                    <span>{fmtM(ptot.ad)}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* 棒グラフ */}
       <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:16, marginBottom:16, boxShadow:"0 1px 4px rgba(0,0,0,0.04)" }}>
         <div style={{ fontSize:13, fontWeight:700, marginBottom:16, color:C.text }}>年度別 収入推移</div>
-        <div style={{ display:"flex", gap:10, alignItems:"flex-end", height:90 }}>
+        <div style={{ display:"flex", gap:10, alignItems:"flex-end", height:120 }}>
           {periodData.map(({ pn, ptot }, pi) => {
-            const h = Math.round((ptot._total / maxPeriodTotal) * 80);
+            const v = sumSelected(ptot);
+            const pv = pi > 0 ? sumSelected(periodData[pi-1].ptot) : null;
+            const yoy = pv ? yoyLabel(v, pv) : null;
+            const h = Math.round((v / maxPeriodTotal) * 80);
             return (
-              <div key={pn} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:6 }}>
-                <div style={{ fontSize:11, color:C.textSub, fontWeight:500 }}>{fmtM(ptot._total)}</div>
-                <div style={{
-                  width:"100%", height:h,
-                  background:periodColors[pi%6],
-                  borderRadius:"4px 4px 0 0",
-                  opacity:0.85,
-                }} />
+              <div key={pn} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
+                <div style={{ fontSize:10, color:C.textSub, fontWeight:500 }}>{fmtM(v)}</div>
+                {yoy && <div style={{ fontSize:10, fontWeight:700, color:yoy.color }}>{yoy.text}</div>}
+                <div style={{ width:"100%", height:h, background:periodColors[pi%6], borderRadius:"4px 4px 0 0", opacity:0.85 }} />
                 <div style={{ fontSize:11, color:C.textSub, fontWeight:600 }}>{pn}年度</div>
               </div>
             );
@@ -1001,15 +1060,28 @@ function SummaryTab({ appData, periods, periodStarts, priceChanges }) {
             <tr style={{ background:C.surfaceHigh }}>
               <th style={{ padding:"8px 14px", textAlign:"left", fontSize:11, color:C.textMuted, fontWeight:500, borderBottom:`1px solid ${C.border}`, position:"sticky", left:0, background:C.surfaceHigh, minWidth:180 }}>店舗名</th>
               <th style={{ padding:"8px 14px", textAlign:"left", fontSize:11, color:C.textMuted, fontWeight:500, borderBottom:`1px solid ${C.border}`, minWidth:80 }}>PKG</th>
-              {periodData.map(({pn}) => (
-                <th key={pn} style={{ padding:"8px 14px", textAlign:"right", fontSize:11, color:C.textMuted, fontWeight:500, borderBottom:`1px solid ${C.border}`, minWidth:90 }}>{pn}年度</th>
+              {periodData.map(({pn}, pi) => (
+                <th key={pn} colSpan={pi>0?2:1} style={{ padding:"8px 14px", textAlign:"right", fontSize:11, color:C.textMuted, fontWeight:500, borderBottom:`1px solid ${C.border}`, minWidth:pi>0?160:90, borderLeft:`1px solid ${C.borderLight}` }}>{pn}年度</th>
               ))}
               <th style={{ padding:"8px 14px", textAlign:"right", fontSize:11, color:C.textMuted, fontWeight:500, borderBottom:`1px solid ${C.border}` }}>累計</th>
+            </tr>
+            <tr style={{ background:C.surfaceHigh }}>
+              <th style={{ padding:"3px 14px", borderBottom:`1px solid ${C.border}`, position:"sticky", left:0, background:C.surfaceHigh }}></th>
+              <th style={{ padding:"3px 14px", borderBottom:`1px solid ${C.border}` }}></th>
+              {periodData.map(({pn}, pi) => (
+                pi === 0
+                  ? <th key={pn} style={{ padding:"3px 10px", textAlign:"right", fontSize:10, color:C.textMuted, fontWeight:400, borderBottom:`1px solid ${C.border}`, borderLeft:`1px solid ${C.borderLight}` }}>金額</th>
+                  : <>
+                      <th key={`${pn}-v`} style={{ padding:"3px 10px", textAlign:"right", fontSize:10, color:C.textMuted, fontWeight:400, borderBottom:`1px solid ${C.border}`, borderLeft:`1px solid ${C.borderLight}` }}>金額</th>
+                      <th key={`${pn}-y`} style={{ padding:"3px 10px", textAlign:"right", fontSize:10, color:C.textMuted, fontWeight:400, borderBottom:`1px solid ${C.border}` }}>前年比</th>
+                    </>
+              ))}
+              <th style={{ padding:"3px 14px", borderBottom:`1px solid ${C.border}` }}></th>
             </tr>
           </thead>
           <tbody>
             {stores.map((store, i) => {
-              const pTotals = periodData.map(p => p.storeData.find(d => d.store.id===store.id)?.tot._total||0);
+              const pTotals = periodData.map(p => sumSelected(p.storeData.find(d => d.store.id===store.id)?.tot||{}));
               const grand = pTotals.reduce((s,v)=>s+v,0);
               const pkgDef = PKG_DEFS[store.pkgKey]||PKG_DEFS.other;
               return (
@@ -1021,9 +1093,20 @@ function SummaryTab({ appData, periods, periodStarts, priceChanges }) {
                   <td style={{ padding:"5px 12px" }}>
                     <span style={{ padding:"1px 5px", borderRadius:3, fontSize:9, background:`${pkgDef.color}20`, color:pkgDef.color, fontWeight:600 }}>{pkgDef.name}</span>
                   </td>
-                  {pTotals.map((t, pi) => (
-                    <td key={pi} style={{ padding:"5px 12px", textAlign:"right", color:t>0?C.text:C.textMuted }}>{t>0?fmtM(t):"—"}</td>
-                  ))}
+                  {pTotals.map((t, pi) => {
+                    const prev = pi > 0 ? pTotals[pi-1] : null;
+                    const yoy = prev !== null ? yoyLabel(t, prev) : null;
+                    return pi === 0 ? (
+                      <td key={pi} style={{ padding:"5px 10px", textAlign:"right", color:t>0?C.text:C.textMuted, borderLeft:`1px solid ${C.borderLight}` }}>{t>0?fmtM(t):"—"}</td>
+                    ) : (
+                      <>
+                        <td key={`${pi}-v`} style={{ padding:"5px 10px", textAlign:"right", color:t>0?C.text:C.textMuted, borderLeft:`1px solid ${C.borderLight}` }}>{t>0?fmtM(t):"—"}</td>
+                        <td key={`${pi}-y`} style={{ padding:"5px 10px", textAlign:"right", fontSize:11 }}>
+                          {yoy ? <span style={{ color:yoy.color, fontWeight:600 }}>{yoy.text}</span> : ""}
+                        </td>
+                      </>
+                    );
+                  })}
                   <td style={{ padding:"5px 12px", textAlign:"right", fontWeight:800, color:C.red }}>{fmtM(grand)}</td>
                 </tr>
               );
@@ -1032,12 +1115,24 @@ function SummaryTab({ appData, periods, periodStarts, priceChanges }) {
           <tfoot>
             <tr style={{ background:C.redDim, borderTop:`2px solid ${C.redBorder}` }}>
               <td style={{ padding:"9px 14px", fontWeight:700, color:C.red, position:"sticky", left:0, background:C.redDim }}>合計</td>
-              <td style={{ padding:"9px 14px" }}></td>
-              {periodData.map(({ pn, ptot }) => (
-                <td key={pn} style={{ padding:"9px 14px", textAlign:"right", fontWeight:700, color:C.red }}>{fmtM(ptot._total)}</td>
-              ))}
+              <td></td>
+              {periodData.map(({ pn, ptot }, pi) => {
+                const v = sumSelected(ptot);
+                const prev = pi > 0 ? sumSelected(periodData[pi-1].ptot) : null;
+                const yoy = prev !== null ? yoyLabel(v, prev) : null;
+                return pi === 0 ? (
+                  <td key={pn} style={{ padding:"9px 10px", textAlign:"right", fontWeight:700, color:C.red, borderLeft:`1px solid ${C.redBorder}` }}>{fmtM(v)}</td>
+                ) : (
+                  <>
+                    <td key={`${pn}-v`} style={{ padding:"9px 10px", textAlign:"right", fontWeight:700, color:C.red, borderLeft:`1px solid ${C.redBorder}` }}>{fmtM(v)}</td>
+                    <td key={`${pn}-y`} style={{ padding:"9px 10px", textAlign:"right" }}>
+                      {yoy ? <span style={{ fontSize:12, color:yoy.color, fontWeight:700 }}>{yoy.text}</span> : ""}
+                    </td>
+                  </>
+                );
+              })}
               <td style={{ padding:"9px 14px", textAlign:"right", fontWeight:800, color:C.red }}>
-                {fmtM(periodData.reduce((s,p)=>s+p.ptot._total,0))}
+                {fmtM(periodData.reduce((s,p)=>s+sumSelected(p.ptot),0))}
               </td>
             </tr>
           </tfoot>
