@@ -180,6 +180,12 @@ function getPeriodNum(ym) {
   return m >= 10 ? y : y - 1;
 }
 
+// 上期（10〜3月）か下期（4〜9月）か
+function getHalf(ym) {
+  const m = parseInt(ym.substring(5,7));
+  return m >= 10 || m <= 3 ? 'first' : 'second'; // first=上期, second=下期
+}
+
 // 合計
 const sumItems = r => r ? ITEMS.reduce((s,it) => s + (r[it.id]||0), 0) : 0;
 
@@ -518,17 +524,20 @@ function UploadTab({ onLoaded }) {
 function SimTab({ appData, periods, periodStarts, showItems, setShowItems, priceChanges }) {
   const { stores, months } = appData;
 
-  const [expanded,   setExpanded]   = useState(new Set());
-  const [filterPref, setFilterPref] = useState("all");
-  const [filterPkg,  setFilterPkg]  = useState("all");
-  const [search,     setSearch]     = useState("");
+  const [expanded,    setExpanded]    = useState(new Set());
+  const [filterPref,  setFilterPref]  = useState("all");
+  const [filterPkg,   setFilterPkg]   = useState("all");
+  const [search,      setSearch]      = useState("");
   const [filterPeriod, setFilterPeriod] = useState(null);
+  const [filterHalf,  setFilterHalf]  = useState(null); // null=全期, 'first'=上期, 'second'=下期
 
   // 表示月を絞り込み
   const visibleMonths = useMemo(() => {
-    if (!filterPeriod) return months;
-    return months.filter(ym => getPeriodNum(ym) === filterPeriod);
-  }, [months, filterPeriod]);
+    let ms = months;
+    if (filterPeriod) ms = ms.filter(ym => getPeriodNum(ym) === filterPeriod);
+    if (filterHalf)   ms = ms.filter(ym => getHalf(ym) === filterHalf);
+    return ms;
+  }, [months, filterPeriod, filterHalf]);
 
   const prefs = useMemo(() => ["all", ...new Set(stores.map(s => s.pref).filter(Boolean))], [stores]);
   const pkgs  = useMemo(() => ["all", ...new Set(stores.map(s => s.pkgKey))], [stores]);
@@ -616,6 +625,12 @@ function SimTab({ appData, periods, periodStarts, showItems, setShowItems, price
               {p}年度
             </button>
           ))}
+        </div>
+        <div style={{ display:"flex", gap:4, alignItems:"center" }}>
+          <span style={{ fontSize:11, color:C.textMuted }}>半期：</span>
+          <button onClick={() => setFilterHalf(null)} style={pillSt(!filterHalf)}>全期</button>
+          <button onClick={() => setFilterHalf(filterHalf==='first'?null:'first')} style={pillSt(filterHalf==='first')}>上期（10〜3月）</button>
+          <button onClick={() => setFilterHalf(filterHalf==='second'?null:'second')} style={pillSt(filterHalf==='second')}>下期（4〜9月）</button>
         </div>
         <div style={{ display:"flex", gap:4 }}>
           <button onClick={() => setExpanded(new Set(stores.map(s=>s.id)))} style={{ ...btnSt(C.textSub), background:"transparent", color:C.textSub, border:`1px solid ${C.border}`, fontSize:11 }}>全展開</button>
@@ -859,6 +874,26 @@ function SummaryTab({ appData, periods, periodStarts, priceChanges }) {
 
   const periodData = useMemo(() => periods.map(pn => {
     const pMonths = months.filter(ym => getPeriodNum(ym) === pn);
+    const firstMonths  = pMonths.filter(ym => getHalf(ym) === 'first');  // 上期
+    const secondMonths = pMonths.filter(ym => getHalf(ym) === 'second'); // 下期
+
+    const calcTotal = (targetMonths) => {
+      const t = {};
+      ITEMS.forEach(it => { t[it.id] = 0; });
+      t._total = 0;
+      stores.forEach(store => {
+        targetMonths.forEach(ym => {
+          if (store.retireYM && ym >= store.retireYM) return;
+          const baseRow = store.monthly[ym];
+          if (!baseRow) return;
+          const row = applyPriceChanges(baseRow, store.id, ym, priceChanges);
+          ITEMS.forEach(it => { t[it.id] += row[it.id]||0; });
+          t._total += sumItems(row);
+        });
+      });
+      return t;
+    };
+
     const storeData = stores.map(store => {
       const tot = {};
       ITEMS.forEach(it => { tot[it.id] = 0; });
@@ -875,12 +910,17 @@ function SummaryTab({ appData, periods, periodStarts, priceChanges }) {
       });
       return { store, tot, activeMonths };
     });
+
     const ptot = {};
     ITEMS.forEach(it => { ptot[it.id] = storeData.reduce((s,d) => s+d.tot[it.id], 0); });
     ptot._total = storeData.reduce((s,d) => s+d.tot._total, 0);
     const retiredCount = stores.filter(s => s.retireYM && getPeriodNum(s.retireYM) === pn).length;
     const activeCount  = storeData.filter(d => d.activeMonths > 0).length;
-    return { pn, pMonths, storeData, ptot, retiredCount, activeCount };
+
+    const firstTot  = calcTotal(firstMonths);
+    const secondTot = calcTotal(secondMonths);
+
+    return { pn, pMonths, storeData, ptot, retiredCount, activeCount, firstTot, secondTot };
   }), [stores, months, periods, priceChanges]);
 
   const periodColors = [C.red, C.blue, C.green, C.purple, C.orange, C.teal];
@@ -890,7 +930,7 @@ function SummaryTab({ appData, periods, periodStarts, priceChanges }) {
     <div>
       {/* KPIカード */}
       <div style={{ display:"grid", gridTemplateColumns:`repeat(${Math.min(periodData.length,4)},1fr)`, gap:12, marginBottom:16 }}>
-        {periodData.slice(0,4).map(({ pn, ptot, retiredCount, activeCount, pMonths }, pi) => (
+        {periodData.slice(0,4).map(({ pn, ptot, retiredCount, activeCount, pMonths, firstTot, secondTot }, pi) => (
           <div key={pn} style={{
             background:C.surface, border:`1px solid ${C.border}`,
             borderTop:`3px solid ${periodColors[pi%6]}`,
@@ -903,6 +943,19 @@ function SummaryTab({ appData, periods, periodStarts, priceChanges }) {
               <span style={{ color:C.green, fontWeight:500 }}>稼働 {activeCount}店</span>
               {retiredCount > 0 && <span style={{ color:C.red, fontWeight:500 }}>撤退 {retiredCount}店</span>}
             </div>
+
+            {/* 上期・下期内訳 */}
+            <div style={{ display:"flex", gap:6, marginBottom:10 }}>
+              <div style={{ flex:1, background:C.surfaceHigh, borderRadius:6, padding:"6px 8px" }}>
+                <div style={{ fontSize:10, color:C.textMuted, marginBottom:2 }}>▲ 上期（10〜3月）</div>
+                <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{fmtM(firstTot._total)}</div>
+              </div>
+              <div style={{ flex:1, background:C.surfaceHigh, borderRadius:6, padding:"6px 8px" }}>
+                <div style={{ fontSize:10, color:C.textMuted, marginBottom:2 }}>▽ 下期（4〜9月）</div>
+                <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{fmtM(secondTot._total)}</div>
+              </div>
+            </div>
+
             {ITEMS.filter(it=>!it.adOnly).map(it => (
               <div key={it.id} style={{ display:"flex", justifyContent:"space-between", padding:"3px 0", borderBottom:`1px solid ${C.borderLight}` }}>
                 <span style={{ fontSize:11, color:C.textSub, display:"flex", alignItems:"center", gap:5 }}>
