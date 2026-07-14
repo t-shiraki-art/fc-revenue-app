@@ -60,7 +60,7 @@ const PKG_MAP = {
 const ITEMS = [
   { id:"royalty",    label:"純粋ロイヤリティ", color:C.amber,      adOnly:false },
   { id:"sv",         label:"SV費用",           color:C.purple,     adOnly:false },
-  { id:"renewal",    label:"更新料",            color:C.amberLight, adOnly:false },
+  { id:"renewal",    label:"更新料",            color:C.orange,     adOnly:false },
   { id:"membership", label:"加盟金",            color:C.green,      adOnly:false },
   { id:"cs",         label:"CS向上",            color:C.teal,       adOnly:false },
   { id:"system",     label:"システム費用",       color:C.blue,       adOnly:false },
@@ -229,17 +229,17 @@ const stickyL  = (w, bg, bold) => ({
   overflow:"hidden", textOverflow:"ellipsis",
 });
 const stickyL2 = (bg) => ({
-  ...baseCell, position:"sticky", left:180, zIndex:4,
-  width:100, minWidth:100, maxWidth:100,
+  ...baseCell, position:"sticky", left:200, zIndex:4,
+  width:120, minWidth:120, maxWidth:120,
   background:bg||C.surface,
   borderRight:`1px solid ${C.border}`,
-  fontSize:11, color:C.textSub,
+  fontSize:12, color:C.textSub,
 });
 const inputSt = {
   padding:"5px 10px",
   background:C.surface,
   border:`1px solid ${C.border}`,
-  borderRadius:6, color:C.text, fontSize:12, outline:"none",
+  borderRadius:6, color:C.text, fontSize:13, outline:"none",
   boxShadow:"inset 0 1px 2px rgba(0,0,0,0.04)",
 };
 const selSt = { ...inputSt };
@@ -248,7 +248,7 @@ const btnSt = (c=C.red) => ({
   border:`1px solid ${c}`,
   background: c===C.red ? C.red : `${c}10`,
   color: c===C.red ? "#fff" : c,
-  fontSize:12, fontWeight:600, cursor:"pointer",
+  fontSize:13, fontWeight:600, cursor:"pointer",
   transition:"opacity .15s",
 });
 const pillSt = a => ({
@@ -256,7 +256,7 @@ const pillSt = a => ({
   border:`1px solid ${a ? C.red : C.border}`,
   background: a ? C.red : "transparent",
   color: a ? "#fff" : C.textSub,
-  fontWeight: a ? 600 : 400, fontSize:11,
+  fontWeight: a ? 600 : 400, fontSize:12,
 });
 
 // ─────────────────────────────────────────────
@@ -617,8 +617,8 @@ function SimTab({ appData, periods, periodStarts, showItems, setShowItems, price
           <thead>
             {/* 期ラベル行 */}
             <tr style={{ background:C.surfaceHigh }}>
-              <th style={{ ...stickyL(180,C.surfaceHigh,true), position:"sticky", left:0, top:0, zIndex:12, height:22, lineHeight:"22px", fontSize:10, color:C.textMuted, borderBottom:`1px solid ${C.border}` }}>店舗名</th>
-              <th style={{ ...stickyL2(C.surfaceHigh), position:"sticky", left:180, top:0, zIndex:12, height:22, lineHeight:"22px", fontSize:10, color:C.textMuted, borderBottom:`1px solid ${C.border}` }}>項目</th>
+              <th style={{ ...stickyL(200,C.surfaceHigh,true), position:"sticky", left:0, top:0, zIndex:12, height:22, lineHeight:"22px", fontSize:10, color:C.textMuted, borderBottom:`1px solid ${C.border}` }}>店舗名</th>
+              <th style={{ ...stickyL2(C.surfaceHigh), position:"sticky", left:200, top:0, zIndex:12, height:22, lineHeight:"22px", fontSize:10, color:C.textMuted, borderBottom:`1px solid ${C.border}` }}>項目</th>
               {visibleMonths.map(ym => {
                 const isFirst = ym === periodStarts[getPeriodNum(ym)];
                 const pn = getPeriodNum(ym);
@@ -639,8 +639,8 @@ function SimTab({ appData, periods, periodStarts, showItems, setShowItems, price
             </tr>
             {/* 年月行 */}
             <tr style={{ background:C.surface }}>
-              <th style={{ ...stickyL(180,C.surface,false), position:"sticky", left:0, top:22, zIndex:12, height:22, lineHeight:"22px", borderBottom:`1px solid ${C.border}` }}></th>
-              <th style={{ ...stickyL2(C.surface), position:"sticky", left:180, top:22, zIndex:12, height:22, lineHeight:"22px", borderBottom:`1px solid ${C.border}` }}></th>
+              <th style={{ ...stickyL(200,C.surface,false), position:"sticky", left:0, top:22, zIndex:12, height:22, lineHeight:"22px", borderBottom:`1px solid ${C.border}` }}></th>
+              <th style={{ ...stickyL2(C.surface), position:"sticky", left:200, top:22, zIndex:12, height:22, lineHeight:"22px", borderBottom:`1px solid ${C.border}` }}></th>
               {visibleMonths.map(ym => {
                 const isFirst = ym === periodStarts[getPeriodNum(ym)];
                 const mo = ym.substring(5);
@@ -675,7 +675,7 @@ function GrandTotalRow({ grandTotals, visibleMonths, periodStarts, visItems, fil
   return (
     <>
       <tr style={{ background:C.redDim, cursor:"pointer" }} onClick={() => setOpen(!open)}>
-        <td style={{ ...stickyL(180,C.redDim,true), color:C.red, fontSize:12 }}>
+        <td style={{ ...stickyL(200,C.redDim,true), color:C.red, fontSize:12 }}>
           <span style={{ marginRight:6, fontSize:10, color:C.red }}>{open?"▼":"▶"}</span>
           全店合計
           {filteredCount < totalCount && <span style={{ fontSize:11, color:C.textMuted, marginLeft:5 }}>({filteredCount}店表示)</span>}
@@ -693,7 +693,7 @@ function GrandTotalRow({ grandTotals, visibleMonths, periodStarts, visItems, fil
       </tr>
       {open && visItems.map(item => (
         <tr key={item.id} style={{ background:"#FFF8F8" }}>
-          <td style={{ ...stickyL(180,"#FFF8F8"), paddingLeft:24 }}></td>
+          <td style={{ ...stickyL(200,"#FFF8F8"), paddingLeft:24 }}></td>
           <td style={{ ...stickyL2("#FFF8F8") }}>
             <span style={{ display:"inline-block", width:6, height:6, borderRadius:3, background:item.color, marginRight:6, verticalAlign:"middle" }} />
             <span style={{ fontSize:11, color:item.color, fontWeight:500 }}>{item.label}</span>
@@ -722,7 +722,7 @@ function StoreRow({ store, visibleMonths, periodStarts, visItems, expanded, onTo
       <tr style={{ cursor:"pointer" }} onClick={onToggle}
         onMouseEnter={e=>e.currentTarget.style.background=C.surfaceHigh}
         onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-        <td style={{ ...stickyL(180,C.surface,true), fontSize:11 }}>
+        <td style={{ ...stickyL(200,C.surface,true), fontSize:11 }}>
           <span style={{ marginRight:5, fontSize:9, color:C.textMuted }}>{expanded?"▼":"▶"}</span>
           {store.name}
           {store.retireYM && <span style={{ fontSize:8, marginLeft:4, padding:"1px 4px", borderRadius:3, background:`${C.red}20`, color:C.red }}>撤退</span>}
@@ -760,7 +760,7 @@ function StoreRow({ store, visibleMonths, periodStarts, visItems, expanded, onTo
         <>
           {visItems.filter(it => !it.adOnly).map(item => (
             <tr key={item.id} style={{ background:`${C.surfaceHigh}50` }}>
-              <td style={{ ...stickyL(180,`${C.surfaceHigh}50`), paddingLeft:24 }}></td>
+              <td style={{ ...stickyL(200,`${C.surfaceHigh}50`), paddingLeft:24 }}></td>
               <td style={{ ...stickyL2(`${C.surfaceHigh}50`) }}>
                 <span style={{ display:"inline-block", width:4, height:4, borderRadius:2, background:item.color, marginRight:5, verticalAlign:"middle" }} />
                 <span style={{ fontSize:10, color:item.color }}>{item.label}</span>
@@ -787,7 +787,7 @@ function StoreRow({ store, visibleMonths, periodStarts, visItems, expanded, onTo
             const adIt = ITEMS.find(it => it.adOnly);
             return (
               <tr key="ad" style={{ background:`${C.surfaceHigh}50` }}>
-                <td style={{ ...stickyL(180,`${C.surfaceHigh}50`), paddingLeft:24 }}></td>
+                <td style={{ ...stickyL(200,`${C.surfaceHigh}50`), paddingLeft:24 }}></td>
                 <td style={{ ...stickyL2(`${C.surfaceHigh}50`) }}>
                   <span style={{ display:"inline-block", width:4, height:4, borderRadius:2, background:adIt.color, marginRight:5, verticalAlign:"middle" }} />
                   <span style={{ fontSize:10, color:adIt.color }}>{adIt.label}</span>
@@ -804,7 +804,7 @@ function StoreRow({ store, visibleMonths, periodStarts, visItems, expanded, onTo
           })()}
           {/* 契約情報 */}
           <tr style={{ background:`${C.surfaceHigh}30` }}>
-            <td style={{ ...stickyL(180,`${C.surfaceHigh}30`), paddingLeft:24, fontSize:9, color:C.textMuted }}>
+            <td style={{ ...stickyL(200,`${C.surfaceHigh}30`), paddingLeft:24, fontSize:9, color:C.textMuted }}>
               契約満了: {store.contractEnd||"—"} | 都道府県: {store.pref||"—"} | 契約: {store.contractYears||"—"} | 開店: {store.openDate||"—"}
             </td>
             <td style={{ ...stickyL2(`${C.surfaceHigh}30`) }}></td>
