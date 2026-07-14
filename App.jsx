@@ -210,16 +210,16 @@ const fmtFull = n => n == null ? "—" : "¥"+Math.round(n).toLocaleString();
 // スタイル — 白ベース クリーンデザイン
 // ─────────────────────────────────────────────
 const baseCell = {
-  height:32, lineHeight:"32px",
+  height:36, lineHeight:"36px",
   borderBottom:`1px solid ${C.borderLight}`,
-  whiteSpace:"nowrap", fontSize:12, padding:"0 12px",
+  whiteSpace:"nowrap", fontSize:13, padding:"0 14px",
 };
 const numCell = (isFirst, retired, event) => ({
   ...baseCell, textAlign:"right",
   borderLeft: isFirst ? `2px solid ${C.periodLine}` : `1px solid ${C.borderLight}`,
   background: retired ? C.redDim : event ? C.amberLight : "transparent",
   color: retired ? C.red : event ? C.amber : C.text,
-  minWidth: 80,
+  minWidth: 96,
 });
 const stickyL  = (w, bg, bold) => ({
   ...baseCell, position:"sticky", left:0, zIndex:4,
@@ -230,7 +230,7 @@ const stickyL  = (w, bg, bold) => ({
 });
 const stickyL2 = (bg) => ({
   ...baseCell, position:"sticky", left:180, zIndex:4,
-  width:90, minWidth:90, maxWidth:90,
+  width:100, minWidth:100, maxWidth:100,
   background:bg||C.surface,
   borderRight:`1px solid ${C.border}`,
   fontSize:11, color:C.textSub,
