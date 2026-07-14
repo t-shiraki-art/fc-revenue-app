@@ -273,6 +273,7 @@ export default function App({
   initialPriceChanges = [],
   onXLSXLoaded        = null,
   onStoreUpdate       = null,
+  onStoreDelete       = null,
   onPriceChangeAdd    = null,
   onPriceChangeDelete = null,
 }) {
@@ -362,7 +363,7 @@ export default function App({
         {tab === "upload"  && <UploadTab onLoaded={onLoaded} />}
         {tab === "sim"     && appData && <SimTab     {...shared} />}
         {tab === "summary" && appData && <SummaryTab {...shared} />}
-        {tab === "master"  && appData && <MasterTab  appData={appData} priceChanges={priceChanges} setPriceChanges={setPriceChanges} />}
+        {tab === "master"  && appData && <MasterTab  appData={appData} priceChanges={priceChanges} setPriceChanges={setPriceChanges} onStoreDelete={onStoreDelete} />}
       </div>
     </div>
   );
@@ -1154,7 +1155,7 @@ const EMPTY_STORE = () => ({
   monthly: {},
 });
 
-function MasterTab({ appData, priceChanges, setPriceChanges }) {
+function MasterTab({ appData, priceChanges, setPriceChanges, onStoreDelete }) {
   const [localStores, setLocalStores] = useState(() => appData.stores);
   const [search,       setSearch]       = useState("");
   const [filterPref,   setFilterPref]   = useState("all");
@@ -1243,6 +1244,7 @@ function MasterTab({ appData, priceChanges, setPriceChanges }) {
     if (!deleteModal) return;
     setLocalStores(localStores.filter(s => s.id !== deleteModal.id));
     setPriceChanges((priceChanges||[]).filter(c => c.storeId !== deleteModal.id));
+    if (onStoreDelete) onStoreDelete(deleteModal.id);
     setDeleteModal(null);
     flash("✓ 店舗を削除しました");
   };
@@ -1473,6 +1475,11 @@ function MasterTab({ appData, priceChanges, setPriceChanges }) {
                     <button onClick={cancelEdit} style={{...btnSt(C.textMuted),fontSize:10,padding:"3px 8px"}}>取消</button>
                   </td>
                 </tr>
+                {/* 現在の月次金額確認・修正パネル */}
+                <CurrentAmountPanel key={`ca_${s.id}`} store={s} months={appData.months} onUpdate={(updatedStore) => {
+                  setLocalStores(localStores.map(st => st.id===s.id ? updatedStore : st));
+                  flash("✓ 金額を更新しました");
+                }} />
                 <PriceChangePanel key={`pc_${s.id}`} store={s} priceChanges={priceChanges} setPriceChanges={setPriceChanges} months={appData.months} />
                 </>
               );
@@ -1655,6 +1662,121 @@ function PriceChangePanel({ store, priceChanges, setPriceChanges, months }) {
             変更履歴がありません。上のフォームから追加してください。
           </div>
         )}
+      </td>
+    </tr>
+  );
+}
+
+// ══════════════════════════════════════════════
+// 現在の月次金額確認・修正パネル
+// ══════════════════════════════════════════════
+function CurrentAmountPanel({ store, months, onUpdate }) {
+  // 直近月を特定（データがある最後の月）
+  const latestYm = useMemo(() => {
+    const yms = months.filter(ym => store.monthly[ym] && Object.values(store.monthly[ym]).some(v => v > 0));
+    return yms.length > 0 ? yms[yms.length - 1] : months[months.length - 1];
+  }, [store, months]);
+
+  // 選択中の年月
+  const [selectedYm, setSelectedYm] = useState(latestYm || '');
+  // 編集中の金額
+  const [editAmounts, setEditAmounts] = useState({});
+  const [saved, setSaved] = useState(false);
+
+  // 選択月が変わったら金額を初期化
+  const currentRow = store.monthly[selectedYm] || {};
+
+  const handleSave = () => {
+    const updatedMonthly = { ...store.monthly };
+    const newRow = { ...currentRow };
+    ITEMS.forEach(it => {
+      if (editAmounts[it.id] !== undefined) {
+        newRow[it.id] = Number(editAmounts[it.id]) || 0;
+      }
+    });
+    updatedMonthly[selectedYm] = newRow;
+    onUpdate({ ...store, monthly: updatedMonthly });
+    setEditAmounts({});
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  const hasEdits = Object.keys(editAmounts).length > 0;
+
+  return (
+    <tr style={{ background:'#FFFBEB' }}>
+      <td colSpan={11} style={{ padding:'12px 16px', borderBottom:`1px solid ${C.border}` }}>
+        <div style={{ fontSize:12, fontWeight:700, color:C.amber, marginBottom:10, display:'flex', alignItems:'center', gap:12 }}>
+          📋 現在の月次金額 — {store.name}
+          {saved && <span style={{ fontSize:11, color:C.green, fontWeight:600 }}>✓ 保存しました</span>}
+        </div>
+
+        {/* 年月セレクター */}
+        <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
+          <span style={{ fontSize:11, color:C.textMuted }}>表示月：</span>
+          <select value={selectedYm} onChange={e => { setSelectedYm(e.target.value); setEditAmounts({}); }}
+            style={{ ...selSt, fontSize:11 }}>
+            {months.slice().reverse().map(ym => (
+              <option key={ym} value={ym}>{ym}</option>
+            ))}
+          </select>
+          <span style={{ fontSize:10, color:C.textMuted }}>の金額を確認・修正</span>
+        </div>
+
+        {/* 金額テーブル */}
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:8, marginBottom:12 }}>
+          {ITEMS.map(it => {
+            const current = currentRow[it.id] || 0;
+            const edited = editAmounts[it.id] !== undefined ? editAmounts[it.id] : '';
+            const displayVal = edited !== '' ? edited : (current || '');
+            const isEdited = editAmounts[it.id] !== undefined;
+            return (
+              <div key={it.id} style={{
+                padding:'8px 10px', borderRadius:8,
+                background: isEdited ? `${it.color}10` : C.surfaceHigh,
+                border: `1px solid ${isEdited ? it.color : C.border}`,
+              }}>
+                <div style={{ display:'flex', alignItems:'center', gap:5, marginBottom:4 }}>
+                  <span style={{ display:'inline-block', width:6, height:6, borderRadius:3, background:it.color }} />
+                  <span style={{ fontSize:10, color:it.color, fontWeight:600 }}>{it.label}</span>
+                </div>
+                <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                  <span style={{ fontSize:10, color:C.textMuted }}>現在：</span>
+                  <span style={{ fontSize:12, fontWeight:600, color:C.text }}>{current > 0 ? `¥${current.toLocaleString()}` : '—'}</span>
+                </div>
+                <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:4 }}>
+                  <span style={{ fontSize:10, color:C.textMuted }}>修正：</span>
+                  <input
+                    type="number"
+                    value={displayVal}
+                    placeholder="金額を入力"
+                    onChange={e => setEditAmounts({ ...editAmounts, [it.id]: e.target.value })}
+                    style={{ ...inputSt, width:110, fontSize:11, textAlign:'right', padding:'3px 6px' }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+          <button onClick={handleSave} disabled={!hasEdits} style={{
+            ...btnSt(C.amber), fontSize:11,
+            opacity: hasEdits ? 1 : 0.4,
+            cursor: hasEdits ? 'pointer' : 'default',
+          }}>
+            {selectedYm} の金額を保存
+          </button>
+          {hasEdits && (
+            <button onClick={() => setEditAmounts({})}
+              style={{ ...btnSt(C.textMuted), background:'transparent', border:`1px solid ${C.border}`, fontSize:11 }}>
+              リセット
+            </button>
+          )}
+          <span style={{ fontSize:10, color:C.textMuted }}>
+            ※ 保存した金額は売上明細・期別サマリーに即時反映されます
+          </span>
+        </div>
       </td>
     </tr>
   );
