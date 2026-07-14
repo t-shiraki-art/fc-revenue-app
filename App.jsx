@@ -295,7 +295,7 @@ export default function App({
   const shared = { appData, periods, periodStarts, showItems, setShowItems, priceChanges };
 
   return (
-    <div style={{ fontFamily:"'Inter','Noto Sans JP',sans-serif", background:C.bg, minHeight:"100vh", color:C.text }}>
+    <div style={{ fontFamily:"'Inter','Noto Sans JP',sans-serif", background:C.bg, minHeight:"100vh", color:C.text, overflowX:"hidden" }}>
       {/* ヘッダー */}
       <div style={{
         position:"sticky", top:0, zIndex:100,
@@ -352,7 +352,7 @@ export default function App({
         )}
       </div>
 
-      <div style={{ padding:"16px 12px" }}>
+      <div style={{ padding:"12px 8px" }}>
         {tab === "upload"  && <UploadTab onLoaded={onLoaded} />}
         {tab === "sim"     && appData && <SimTab     {...shared} />}
         {tab === "summary" && appData && <SummaryTab {...shared} />}
@@ -637,13 +637,14 @@ function SimTab({ appData, periods, periodStarts, showItems, setShowItems, price
 
       {/* テーブル */}
       <div style={{
-        overflowX:"auto", overflowY:"auto",
+        overflowX:"scroll", overflowY:"auto",
         maxHeight:"calc(100vh - 168px)",
         border:`1px solid ${C.border}`, borderRadius:8,
         background:C.surface,
         boxShadow:"0 1px 4px rgba(0,0,0,0.05)",
+        WebkitOverflowScrolling:"touch",
       }}>
-        <table style={{ borderCollapse:"collapse", whiteSpace:"nowrap", minWidth:"100%" }}>
+        <table style={{ borderCollapse:"collapse", whiteSpace:"nowrap", tableLayout:"fixed" }}>
           <thead>
             {/* 期ラベル行 */}
             <tr style={{ background:C.surfaceHigh }}>
