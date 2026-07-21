@@ -1298,39 +1298,24 @@ function MasterTab({ appData, priceChanges, setPriceChanges, onStoreUpdate, onSt
   );
 
   // インライン編集フィールド
-  const composingRef = useRef(false);
-  const EF = ({k, placeholder, type="text", w=120}) => {
-    const handleChange = e => {
-      if (!composingRef.current) setEditForm(f => ({...f, [k]: e.target.value}));
-    };
-    return (
-      <input
-        type={type}
-        value={editForm[k] ?? ""}
-        placeholder={placeholder || k}
-        onCompositionStart={() => { composingRef.current = true; }}
-        onCompositionEnd={e => { composingRef.current = false; setEditForm(f => ({...f, [k]: e.target.value})); }}
-        onChange={handleChange}
-        style={{...inputSt, width:w, fontSize:10}}
-      />
-    );
-  };
-  const AF = ({k, placeholder, type="text", w=120}) => {
-    const handleChange = e => {
-      if (!composingRef.current) setAddForm(f => ({...f, [k]: e.target.value}));
-    };
-    return (
-      <input
-        type={type}
-        value={addForm[k] ?? ""}
-        placeholder={placeholder || k}
-        onCompositionStart={() => { composingRef.current = true; }}
-        onCompositionEnd={e => { composingRef.current = false; setAddForm(f => ({...f, [k]: e.target.value})); }}
-        onChange={handleChange}
-        style={{...inputSt, width:w, fontSize:10}}
-      />
-    );
-  };
+  const EF = ({k, placeholder, type="text", w=120}) => (
+    <input
+      type={type}
+      value={editForm[k] ?? ""}
+      placeholder={placeholder || k}
+      onChange={e => setEditForm(f => ({...f, [k]: e.target.value}))}
+      style={{...inputSt, width:w, fontSize:10}}
+    />
+  );
+  const AF = ({k, placeholder, type="text", w=120}) => (
+    <input
+      type={type}
+      value={addForm[k] ?? ""}
+      placeholder={placeholder || k}
+      onChange={e => setAddForm(f => ({...f, [k]: e.target.value}))}
+      style={{...inputSt, width:w, fontSize:10}}
+    />
+  );
 
   return (
     <div>
