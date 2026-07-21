@@ -1205,6 +1205,7 @@ function MasterTab({ appData, priceChanges, setPriceChanges, onStoreDelete }) {
       pkgName: PKG_DEFS[editForm.pkgKey]?.name || editForm.pkgKey,
     };
     setLocalStores(localStores.map(s => s.id===editId ? updated : s));
+    if (onStoreUpdate) onStoreUpdate(updated);
     setEditId(null); setEditForm({});
     flash("✓ 保存しました");
   };
@@ -1218,6 +1219,7 @@ function MasterTab({ appData, priceChanges, setPriceChanges, onStoreDelete }) {
       monthly: {},
     };
     setLocalStores([...localStores, newStore]);
+    if (onStoreUpdate) onStoreUpdate(newStore);
     setAddForm(EMPTY_STORE());
     setShowAddForm(false);
     flash("✓ 店舗を追加しました");
@@ -1228,7 +1230,9 @@ function MasterTab({ appData, priceChanges, setPriceChanges, onStoreDelete }) {
   // 撤退登録・取消
   const toggleRetire = (s) => {
     if (s.retireYM) {
-      setLocalStores(localStores.map(st => st.id===s.id ? {...st, retireYM:"", retireRaw:""} : st));
+      const updated = {...s, retireYM:"", retireRaw:""};
+      setLocalStores(localStores.map(st => st.id===s.id ? updated : st));
+      if (onStoreUpdate) onStoreUpdate(updated);
       flash("✓ 撤退を取り消しました");
     } else {
       setRetireModal({ storeId: s.id, name: s.name, ym: "" });
@@ -1239,8 +1243,12 @@ function MasterTab({ appData, priceChanges, setPriceChanges, onStoreDelete }) {
     if (!retireModal || !/^\d{4}\/\d{2}$/.test(retireModal.ym)) {
       flash("⚠️ 年月の形式が正しくありません（例: 2026/04）", true); return;
     }
-    setLocalStores(localStores.map(st => st.id===retireModal.storeId
-      ? {...st, retireYM:retireModal.ym, retireRaw:retireModal.ym} : st));
+    const updated = localStores.find(st => st.id===retireModal.storeId);
+    if (updated) {
+      const newStore = {...updated, retireYM:retireModal.ym, retireRaw:retireModal.ym};
+      setLocalStores(localStores.map(st => st.id===retireModal.storeId ? newStore : st));
+      if (onStoreUpdate) onStoreUpdate(newStore);
+    }
     setRetireModal(null);
     flash("✓ 撤退日を登録しました");
   };
