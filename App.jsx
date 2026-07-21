@@ -369,7 +369,7 @@ export default function App({
         {tab === "sim"     && appData && <SimTab     {...shared} />}
         {tab === "summary" && appData && <SummaryTab {...shared} />}
         {tab === "budget"  && appData && <BudgetTab  {...shared} onActualsSave={onActualsSave} />}
-        {tab === "master"  && appData && <MasterTab  appData={appData} priceChanges={priceChanges} setPriceChanges={setPriceChanges} onStoreDelete={onStoreDelete} />}
+        {tab === "master"  && appData && <MasterTab  appData={appData} priceChanges={priceChanges} setPriceChanges={setPriceChanges} onStoreUpdate={onStoreUpdate} onStoreDelete={onStoreDelete} />}
       </div>
     </div>
   );
@@ -1161,7 +1161,7 @@ const EMPTY_STORE = () => ({
   monthly: {},
 });
 
-function MasterTab({ appData, priceChanges, setPriceChanges, onStoreDelete }) {
+function MasterTab({ appData, priceChanges, setPriceChanges, onStoreUpdate, onStoreDelete }) {
   const [localStores, setLocalStores] = useState(() => appData.stores);
   const [search,       setSearch]       = useState("");
   const [filterPref,   setFilterPref]   = useState("all");
