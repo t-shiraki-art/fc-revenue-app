@@ -271,11 +271,13 @@ const pillSt = a => ({
 export default function App({
   initialData         = null,
   initialPriceChanges = [],
+  initialActuals      = {},
   onXLSXLoaded        = null,
   onStoreUpdate       = null,
   onStoreDelete       = null,
   onPriceChangeAdd    = null,
   onPriceChangeDelete = null,
+  onActualsSave       = null,
 }) {
   const [tab, setTab]             = useState(initialData ? "sim" : "upload");
   const [appData, setAppData]     = useState(initialData);
@@ -283,7 +285,7 @@ export default function App({
   // 金額変更履歴
   const [priceChanges, setPriceChanges] = useState(initialPriceChanges);
   // 実績データ: { storeId: { ym: { royalty,sv,... } } }
-  const [actuals, setActuals] = useState({});
+  const [actuals, setActuals] = useState(initialActuals);
 
   const onLoaded = useCallback(async (data) => {
     setAppData(data);
@@ -366,7 +368,7 @@ export default function App({
         {tab === "upload"  && <UploadTab onLoaded={onLoaded} />}
         {tab === "sim"     && appData && <SimTab     {...shared} />}
         {tab === "summary" && appData && <SummaryTab {...shared} />}
-        {tab === "budget"  && appData && <BudgetTab  {...shared} />}
+        {tab === "budget"  && appData && <BudgetTab  {...shared} onActualsSave={onActualsSave} />}
         {tab === "master"  && appData && <MasterTab  appData={appData} priceChanges={priceChanges} setPriceChanges={setPriceChanges} onStoreDelete={onStoreDelete} />}
       </div>
     </div>
@@ -1288,14 +1290,19 @@ function MasterTab({ appData, priceChanges, setPriceChanges, onStoreDelete }) {
   );
 
   // インライン編集フィールド
+  const composingRef = useRef(false);
   const EF = ({k,placeholder,type="text",w=120}) => (
-    <input type={type} value={editForm[k]||""} placeholder={placeholder||k}
-      onChange={e=>setEditForm({...editForm,[k]:e.target.value})}
+    <input key={`ef_${editId}_${k}`} type={type} defaultValue={editForm[k]||""} placeholder={placeholder||k}
+      onCompositionStart={() => { composingRef.current = true; }}
+      onCompositionEnd={e => { composingRef.current = false; setEditForm(f=>({...f,[k]:e.target.value})); }}
+      onChange={e => { if (!composingRef.current) setEditForm(f=>({...f,[k]:e.target.value})); }}
       style={{...inputSt,width:w,fontSize:10}} />
   );
   const AF = ({k,placeholder,type="text",w=120}) => (
-    <input type={type} value={addForm[k]||""} placeholder={placeholder||k}
-      onChange={e=>setAddForm({...addForm,[k]:e.target.value})}
+    <input key={`af_${k}`} type={type} defaultValue={addForm[k]||""} placeholder={placeholder||k}
+      onCompositionStart={() => { composingRef.current = true; }}
+      onCompositionEnd={e => { composingRef.current = false; setAddForm(f=>({...f,[k]:e.target.value})); }}
+      onChange={e => { if (!composingRef.current) setAddForm(f=>({...f,[k]:e.target.value})); }}
       style={{...inputSt,width:w,fontSize:10}} />
   );
 
@@ -1790,7 +1797,7 @@ function CurrentAmountPanel({ store, months, onUpdate }) {
 // ══════════════════════════════════════════════
 // 予実管理タブ
 // ══════════════════════════════════════════════
-function BudgetTab({ appData, periods, periodStarts, priceChanges, showItems, setShowItems, actuals, setActuals }) {
+function BudgetTab({ appData, periods, periodStarts, priceChanges, showItems, setShowItems, actuals, setActuals, onActualsSave }) {
   const { stores, months } = appData;
   const fileRef = useRef(null);
   const [loading, setLoading] = useState(false);
@@ -1900,6 +1907,7 @@ function BudgetTab({ appData, periods, periodStarts, priceChanges, showItems, se
       });
 
       setActuals(newActuals);
+      if (onActualsSave) onActualsSave(newActuals);
 
       const msg = [
         `✅ 実績データを取り込みました`,
@@ -1917,7 +1925,13 @@ function BudgetTab({ appData, periods, periodStarts, priceChanges, showItems, se
     if (fileRef.current) fileRef.current.value = '';
   };
 
-  // 予算集計（priceChanges適用済み）
+  // showItemsで選択した項目だけ集計
+  const sumFiltered = useCallback((row) => {
+    if (!row) return 0;
+    return ITEMS.reduce((s, it) => showItems[it.id] ? s + (row[it.id]||0) : s, 0);
+  }, [showItems]);
+
+  // 予算集計（priceChanges適用済み・showItemsフィルター）
   const budgetByYm = useMemo(() => {
     const result = {};
     visibleMonths.forEach(ym => {
@@ -1929,13 +1943,13 @@ function BudgetTab({ appData, periods, periodStarts, priceChanges, showItems, se
         if (!baseRow) return;
         const row = applyPriceChanges(baseRow, store.id, ym, priceChanges);
         ITEMS.forEach(it => { result[ym][it.id] += row[it.id]||0; });
-        result[ym]._total += sumItems(row);
+        result[ym]._total += sumFiltered(row);
       });
     });
     return result;
-  }, [stores, visibleMonths, priceChanges]);
+  }, [stores, visibleMonths, priceChanges, sumFiltered]);
 
-  // 実績集計
+  // 実績集計（showItemsフィルター）
   const actualByYm = useMemo(() => {
     const result = {};
     visibleMonths.forEach(ym => {
@@ -1945,11 +1959,11 @@ function BudgetTab({ appData, periods, periodStarts, priceChanges, showItems, se
         const row = storeActuals[ym];
         if (!row) return;
         ITEMS.forEach(it => { result[ym][it.id] += row[it.id]||0; });
-        result[ym]._total += sumItems(row);
+        result[ym]._total += sumFiltered(row);
       });
     });
     return result;
-  }, [actuals, visibleMonths]);
+  }, [actuals, visibleMonths, sumFiltered]);
 
   // 期別集計
   const periodSummary = useMemo(() => periods.map(pn => {
@@ -1975,7 +1989,7 @@ function BudgetTab({ appData, periods, periodStarts, priceChanges, showItems, se
   return (
     <div>
       {/* コントロールバー */}
-      <div style={{ display:"flex", gap:8, marginBottom:12, alignItems:"center", flexWrap:"wrap", padding:"10px 12px", background:C.surface, borderRadius:8, border:`1px solid ${C.border}`, boxShadow:"0 1px 3px rgba(0,0,0,0.04)" }}>
+      <div style={{ display:"flex", gap:8, marginBottom:8, alignItems:"center", flexWrap:"wrap", padding:"10px 12px", background:C.surface, borderRadius:8, border:`1px solid ${C.border}`, boxShadow:"0 1px 3px rgba(0,0,0,0.04)" }}>
         <div style={{ fontSize:13, fontWeight:700, color:C.text }}>予実管理</div>
         <div style={{ display:"flex", gap:4, alignItems:"center" }}>
           <span style={{ fontSize:11, color:C.textMuted }}>期：</span>
@@ -1994,11 +2008,28 @@ function BudgetTab({ appData, periods, periodStarts, priceChanges, showItems, se
             style={{ ...btnSt(C.blue), background:"transparent", border:`1px solid ${C.border}`, color:C.textSub, fontSize:11 }}>
             {viewMode==='summary' ? '月次詳細' : 'サマリー'}
           </button>
-          <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{ display:"none" }} onChange={handleActualFile} />
+          <input ref={fileRef} type="file" accept=".csv" style={{ display:"none" }} onChange={handleActualFile} />
           <button onClick={() => fileRef.current?.click()} style={{ ...btnSt(C.green), fontSize:11 }}>
-            {loading ? '読込中...' : '実績XLSXをアップロード'}
+            {loading ? '読込中...' : '実績CSVをアップロード'}
           </button>
         </div>
+      </div>
+
+      {/* 項目フィルター */}
+      <div style={{ display:"flex", gap:6, marginBottom:12, flexWrap:"wrap", alignItems:"center", padding:"8px 12px", background:C.surface, borderRadius:8, border:`1px solid ${C.border}` }}>
+        <span style={{ fontSize:11, color:C.textMuted, fontWeight:600 }}>表示項目：</span>
+        <button onClick={() => setShowItems(Object.fromEntries(ITEMS.map(it=>[it.id,true])))}
+          style={{ ...btnSt(C.textSub), background:"transparent", border:`1px solid ${C.border}`, color:C.textSub, fontSize:11 }}>全選択</button>
+        {ITEMS.map(it => (
+          <button key={it.id} onClick={() => setShowItems({ ...showItems, [it.id]:!showItems[it.id] })}
+            style={{
+              padding:"3px 10px", borderRadius:16, fontSize:11, cursor:"pointer",
+              background: showItems[it.id] ? `${it.color}15` : "transparent",
+              color: showItems[it.id] ? it.color : C.textMuted,
+              border: `1px solid ${showItems[it.id] ? it.color : C.border}`,
+              fontWeight: showItems[it.id] ? 600 : 400,
+            }}>{it.label}</button>
+        ))}
       </div>
 
       {!hasAnyActual && (
