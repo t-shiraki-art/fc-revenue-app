@@ -280,8 +280,10 @@ export default function App({
   const [tab, setTab]             = useState(initialData ? "sim" : "upload");
   const [appData, setAppData]     = useState(initialData);
   const [showItems, setShowItems] = useState(Object.fromEntries(ITEMS.map(it=>[it.id,true])));
-  // 金額変更履歴: [{ id, storeId, fromYM, itemId, newValue }]
+  // 金額変更履歴
   const [priceChanges, setPriceChanges] = useState(initialPriceChanges);
+  // 実績データ: { storeId: { ym: { royalty,sv,... } } }
+  const [actuals, setActuals] = useState({});
 
   const onLoaded = useCallback(async (data) => {
     setAppData(data);
@@ -299,7 +301,7 @@ export default function App({
     return { periods: Object.keys(ps).map(Number).sort(), periodStarts: ps };
   }, [appData]);
 
-  const shared = { appData, periods, periodStarts, showItems, setShowItems, priceChanges };
+  const shared = { appData, periods, periodStarts, showItems, setShowItems, priceChanges, actuals, setActuals };
 
   return (
     <div style={{ fontFamily:"'Inter','Noto Sans JP',sans-serif", background:C.bg, minHeight:"100vh", color:C.text, overflowX:"hidden" }}>
@@ -331,10 +333,11 @@ export default function App({
         </div>
         {/* ナビ */}
         {[
-          { id:"upload", label:"データ読込" },
-          { id:"sim",    label:"売上明細",    disabled:!appData },
-          { id:"summary",label:"期別サマリー", disabled:!appData },
-          { id:"master", label:"店舗マスタ",  disabled:!appData },
+          { id:"upload",  label:"データ読込" },
+          { id:"sim",     label:"売上明細",    disabled:!appData },
+          { id:"summary", label:"期別サマリー", disabled:!appData },
+          { id:"budget",  label:"予実管理",    disabled:!appData },
+          { id:"master",  label:"店舗マスタ",  disabled:!appData },
         ].map(({ id, label, disabled }) => (
           <button key={id} onClick={() => !disabled && setTab(id)} style={{
             height:56, padding:"0 18px",
@@ -363,6 +366,7 @@ export default function App({
         {tab === "upload"  && <UploadTab onLoaded={onLoaded} />}
         {tab === "sim"     && appData && <SimTab     {...shared} />}
         {tab === "summary" && appData && <SummaryTab {...shared} />}
+        {tab === "budget"  && appData && <BudgetTab  {...shared} />}
         {tab === "master"  && appData && <MasterTab  appData={appData} priceChanges={priceChanges} setPriceChanges={setPriceChanges} onStoreDelete={onStoreDelete} />}
       </div>
     </div>
@@ -1780,5 +1784,389 @@ function CurrentAmountPanel({ store, months, onUpdate }) {
         </div>
       </td>
     </tr>
+  );
+}
+
+// ══════════════════════════════════════════════
+// 予実管理タブ
+// ══════════════════════════════════════════════
+function BudgetTab({ appData, periods, periodStarts, priceChanges, showItems, setShowItems, actuals, setActuals }) {
+  const { stores, months } = appData;
+  const fileRef = useRef(null);
+  const [loading, setLoading] = useState(false);
+  const [filterPeriod, setFilterPeriod] = useState(null);
+  const [filterHalf, setFilterHalf] = useState(null);
+  const [viewMode, setViewMode] = useState('summary'); // summary | detail
+
+  // 表示月
+  const visibleMonths = useMemo(() => {
+    let ms = months;
+    if (filterPeriod) ms = ms.filter(ym => getPeriodNum(ym) === filterPeriod);
+    if (filterHalf)   ms = ms.filter(ym => getHalf(ym) === filterHalf);
+    return ms;
+  }, [months, filterPeriod, filterHalf]);
+
+  // 実績CSVのアップロード処理
+  const handleActualFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLoading(true);
+    try {
+      const buf = await file.arrayBuffer();
+
+      // 文字コード検出（Shift-JIS対応）
+      const decoder = new TextDecoder('shift-jis');
+      const text = decoder.decode(buf);
+      const lines = text.split('\n').filter(l => l.trim());
+
+      // ヘッダー行をスキップ
+      const dataLines = lines.slice(1);
+
+      // 店舗名→store IDのマップ作成
+      const storeNameMap = {};
+      const storeCodeMap = {};
+      stores.forEach(s => {
+        // 店舗名の正規化（スペース・記号を除去して照合）
+        const norm = s.name.replace(/\s/g,'').replace(/[（(）)　]/g,'');
+        storeNameMap[norm] = s.id;
+        if (s.storeId) storeCodeMap[s.storeId] = s.id;
+      });
+
+      const newActuals = { ...actuals };
+      let matched = 0, unmatched = 0;
+      const unmatchedNames = [];
+
+      dataLines.forEach(line => {
+        // CSVパース（カンマ区切り・クォート対応）
+        const cols = line.match(/(".*?"|[^,]+)(?=,|$)/g)
+          ?.map(c => c.replace(/^"|"$/g,'').replace(/,/g,'').trim()) || [];
+        if (cols.length < 9) return;
+
+        const ymRaw   = cols[0]?.trim(); // 202606
+        const storeRaw = cols[2]?.trim(); // T1000217　カーセブン川崎宮崎台店
+        const royalty  = parseInt(cols[3]?.replace(/,/g,'') || '0') || 0;
+        const sv       = parseInt(cols[4]?.replace(/,/g,'') || '0') || 0;
+        const ad       = parseInt(cols[5]?.replace(/,/g,'') || '0') || 0;
+        const system   = parseInt(cols[6]?.replace(/,/g,'') || '0') || 0;
+        const cs       = parseInt(cols[7]?.replace(/,/g,'') || '0') || 0;
+        const juryo    = parseInt(cols[8]?.replace(/,/g,'') || '0') || 0;
+
+        if (!ymRaw || ymRaw.length < 6) return;
+
+        // 年月フォーマット変換 202606 → 2026/06
+        const ym = `${ymRaw.substring(0,4)}/${ymRaw.substring(4,6)}`;
+
+        // 店舗コード抽出（先頭の英数字部分）
+        const codeMatch = storeRaw?.match(/^([A-Z]\d+)/);
+        const storeCode = codeMatch?.[1] || '';
+
+        // 店舗名抽出（コードと全角スペースの後）
+        const storeName = storeRaw?.replace(/^[A-Z]\d+[\s　]+/, '').trim() || '';
+        const normName  = storeName.replace(/\s/g,'').replace(/[（(）)　]/g,'');
+
+        // マッチング：コード優先→名前照合
+        let storeId = storeCodeMap[storeCode] || storeNameMap[normName];
+
+        // 部分一致フォールバック
+        if (!storeId && normName) {
+          const key = Object.keys(storeNameMap).find(k =>
+            k.includes(normName.substring(0, 8)) || normName.includes(k.substring(0, 8))
+          );
+          if (key) storeId = storeNameMap[key];
+        }
+
+        if (!storeId) {
+          unmatched++;
+          unmatchedNames.push(storeName);
+          return;
+        }
+
+        matched++;
+        if (!newActuals[storeId]) newActuals[storeId] = {};
+
+        // 従量額を分配（60% → 純粋ロイヤリティ、40% → 広告費用）
+        const juryoRoyalty = Math.round(juryo * 0.6);
+        const juryoAd      = juryo - juryoRoyalty;
+
+        newActuals[storeId][ym] = {
+          royalty:    royalty + juryoRoyalty,
+          sv:         sv,
+          renewal:    0,
+          membership: 0,
+          cs:         cs,
+          system:     system,
+          ad:         ad + juryoAd,
+        };
+      });
+
+      setActuals(newActuals);
+
+      const msg = [
+        `✅ 実績データを取り込みました`,
+        `・マッチ: ${matched}店舗`,
+        unmatched > 0 ? `・未マッチ: ${unmatched}店舗（${unmatchedNames.slice(0,3).join('、')}${unmatchedNames.length>3?'…':''}）` : '',
+        `・従量額は純粋ロイヤリティ60%・広告費用40%で配分済み`,
+      ].filter(Boolean).join('\n');
+      alert(msg);
+
+    } catch(err) {
+      console.error(err);
+      alert('読み込みに失敗しました: ' + err.message);
+    }
+    setLoading(false);
+    if (fileRef.current) fileRef.current.value = '';
+  };
+
+  // 予算集計（priceChanges適用済み）
+  const budgetByYm = useMemo(() => {
+    const result = {};
+    visibleMonths.forEach(ym => {
+      result[ym] = { _total:0 };
+      ITEMS.forEach(it => { result[ym][it.id] = 0; });
+      stores.forEach(store => {
+        if (store.retireYM && ym >= store.retireYM) return;
+        const baseRow = store.monthly[ym];
+        if (!baseRow) return;
+        const row = applyPriceChanges(baseRow, store.id, ym, priceChanges);
+        ITEMS.forEach(it => { result[ym][it.id] += row[it.id]||0; });
+        result[ym]._total += sumItems(row);
+      });
+    });
+    return result;
+  }, [stores, visibleMonths, priceChanges]);
+
+  // 実績集計
+  const actualByYm = useMemo(() => {
+    const result = {};
+    visibleMonths.forEach(ym => {
+      result[ym] = { _total:0 };
+      ITEMS.forEach(it => { result[ym][it.id] = 0; });
+      Object.values(actuals).forEach(storeActuals => {
+        const row = storeActuals[ym];
+        if (!row) return;
+        ITEMS.forEach(it => { result[ym][it.id] += row[it.id]||0; });
+        result[ym]._total += sumItems(row);
+      });
+    });
+    return result;
+  }, [actuals, visibleMonths]);
+
+  // 期別集計
+  const periodSummary = useMemo(() => periods.map(pn => {
+    const pMonths = months.filter(ym => getPeriodNum(ym) === pn);
+    const budget = { _total:0 }; ITEMS.forEach(it => { budget[it.id] = 0; });
+    const actual = { _total:0 }; ITEMS.forEach(it => { actual[it.id] = 0; });
+    pMonths.forEach(ym => {
+      const b = budgetByYm[ym] || {};
+      const a = actualByYm[ym] || {};
+      ITEMS.forEach(it => { budget[it.id] += b[it.id]||0; actual[it.id] += a[it.id]||0; });
+      budget._total += b._total||0;
+      actual._total += a._total||0;
+    });
+    const hasActual = actual._total > 0;
+    const rate = budget._total > 0 ? (actual._total / budget._total * 100) : null;
+    const diff = actual._total - budget._total;
+    return { pn, pMonths, budget, actual, rate, diff, hasActual };
+  }), [periods, months, budgetByYm, actualByYm]);
+
+  const hasAnyActual = Object.keys(actuals).length > 0;
+  const periodColors = [C.red, C.blue, C.green, C.purple, C.orange, C.teal];
+
+  return (
+    <div>
+      {/* コントロールバー */}
+      <div style={{ display:"flex", gap:8, marginBottom:12, alignItems:"center", flexWrap:"wrap", padding:"10px 12px", background:C.surface, borderRadius:8, border:`1px solid ${C.border}`, boxShadow:"0 1px 3px rgba(0,0,0,0.04)" }}>
+        <div style={{ fontSize:13, fontWeight:700, color:C.text }}>予実管理</div>
+        <div style={{ display:"flex", gap:4, alignItems:"center" }}>
+          <span style={{ fontSize:11, color:C.textMuted }}>期：</span>
+          <button onClick={() => setFilterPeriod(null)} style={pillSt(!filterPeriod)}>全期</button>
+          {periods.map(p => (
+            <button key={p} onClick={() => setFilterPeriod(p===filterPeriod?null:p)} style={pillSt(filterPeriod===p)}>{p}年度</button>
+          ))}
+        </div>
+        <div style={{ display:"flex", gap:4, alignItems:"center" }}>
+          <button onClick={() => setFilterHalf(null)} style={pillSt(!filterHalf)}>全期</button>
+          <button onClick={() => setFilterHalf(filterHalf==='first'?null:'first')} style={pillSt(filterHalf==='first')}>上期</button>
+          <button onClick={() => setFilterHalf(filterHalf==='second'?null:'second')} style={pillSt(filterHalf==='second')}>下期</button>
+        </div>
+        <div style={{ marginLeft:"auto", display:"flex", gap:8, alignItems:"center" }}>
+          <button onClick={() => setViewMode(viewMode==='summary'?'detail':'summary')}
+            style={{ ...btnSt(C.blue), background:"transparent", border:`1px solid ${C.border}`, color:C.textSub, fontSize:11 }}>
+            {viewMode==='summary' ? '月次詳細' : 'サマリー'}
+          </button>
+          <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{ display:"none" }} onChange={handleActualFile} />
+          <button onClick={() => fileRef.current?.click()} style={{ ...btnSt(C.green), fontSize:11 }}>
+            {loading ? '読込中...' : '実績XLSXをアップロード'}
+          </button>
+        </div>
+      </div>
+
+      {!hasAnyActual && (
+        <div style={{ padding:"24px", background:C.surface, border:`1px dashed ${C.border}`, borderRadius:10, textAlign:"center", marginBottom:16 }}>
+          <div style={{ fontSize:32, marginBottom:12 }}>📊</div>
+          <div style={{ fontSize:14, fontWeight:700, color:C.text, marginBottom:8 }}>実績データがまだありません</div>
+          <div style={{ fontSize:12, color:C.textMuted, marginBottom:16 }}>
+            毎月締め後に実績XLSXをアップロードすることで予実比較ができます
+          </div>
+          <button onClick={() => fileRef.current?.click()} style={{ ...btnSt(C.green), fontSize:12 }}>
+            実績XLSXをアップロード
+          </button>
+        </div>
+      )}
+
+      {/* 期別KPIカード */}
+      <div style={{ display:"grid", gridTemplateColumns:`repeat(${Math.min(periodSummary.length,4)},1fr)`, gap:12, marginBottom:16 }}>
+        {periodSummary.filter(p => !filterPeriod || p.pn === filterPeriod).map(({ pn, budget, actual, rate, diff, hasActual }, pi) => (
+          <div key={pn} style={{ background:C.surface, border:`1px solid ${C.border}`, borderTop:`3px solid ${periodColors[pi%6]}`, borderRadius:10, padding:16, boxShadow:"0 1px 4px rgba(0,0,0,0.04)" }}>
+            <div style={{ fontSize:11, color:C.textMuted, marginBottom:4 }}>{pn}年度</div>
+
+            {/* 予算 */}
+            <div style={{ marginBottom:8 }}>
+              <div style={{ fontSize:10, color:C.textMuted }}>予算</div>
+              <div style={{ fontSize:20, fontWeight:800, color:C.text }}>{fmtM(budget._total)}</div>
+            </div>
+
+            {/* 実績 */}
+            <div style={{ marginBottom:10 }}>
+              <div style={{ fontSize:10, color:C.textMuted }}>実績</div>
+              <div style={{ fontSize:20, fontWeight:800, color: hasActual ? (diff >= 0 ? C.green : C.red) : C.textMuted }}>
+                {hasActual ? fmtM(actual._total) : '—'}
+              </div>
+            </div>
+
+            {/* 達成率 */}
+            {hasActual && rate !== null && (
+              <>
+                <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4, fontSize:11 }}>
+                  <span style={{ color:C.textMuted }}>達成率</span>
+                  <span style={{ fontWeight:700, color: rate >= 100 ? C.green : rate >= 90 ? C.amber : C.red }}>
+                    {rate.toFixed(1)}%
+                  </span>
+                </div>
+                {/* 達成率バー */}
+                <div style={{ height:8, background:C.surfaceHigh, borderRadius:4, overflow:"hidden", marginBottom:8 }}>
+                  <div style={{
+                    height:"100%", borderRadius:4,
+                    width:`${Math.min(rate,100)}%`,
+                    background: rate >= 100 ? C.green : rate >= 90 ? C.amber : C.red,
+                    transition:"width .5s",
+                  }} />
+                </div>
+                {/* 差異 */}
+                <div style={{ display:"flex", justifyContent:"space-between", fontSize:11 }}>
+                  <span style={{ color:C.textMuted }}>差異</span>
+                  <span style={{ fontWeight:600, color: diff >= 0 ? C.green : C.red }}>
+                    {diff >= 0 ? '+' : ''}{fmtM(diff)}
+                  </span>
+                </div>
+              </>
+            )}
+
+            {/* 項目別内訳 */}
+            <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${C.borderLight}` }}>
+              {ITEMS.filter(it => !it.adOnly).map(it => {
+                const b = budget[it.id] || 0;
+                const a = actual[it.id] || 0;
+                const r = b > 0 ? (a / b * 100) : null;
+                return (
+                  <div key={it.id} style={{ display:"flex", justifyContent:"space-between", padding:"2px 0", fontSize:11 }}>
+                    <span style={{ color:it.color, display:"flex", alignItems:"center", gap:4 }}>
+                      <span style={{ display:"inline-block", width:5, height:5, borderRadius:2.5, background:it.color }} />
+                      {it.label}
+                    </span>
+                    <span style={{ display:"flex", gap:8, alignItems:"center" }}>
+                      {hasActual && r !== null && (
+                        <span style={{ fontSize:10, color: r >= 100 ? C.green : r >= 90 ? C.amber : C.red, fontWeight:600 }}>
+                          {r.toFixed(0)}%
+                        </span>
+                      )}
+                      <span style={{ color:C.textSub }}>{fmtM(b)}</span>
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* 月次推移テーブル */}
+      {viewMode === 'detail' && (
+        <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, overflowX:"auto", boxShadow:"0 1px 4px rgba(0,0,0,0.04)" }}>
+          <div style={{ padding:"12px 16px", borderBottom:`1px solid ${C.border}`, fontSize:13, fontWeight:700, color:C.text }}>月次 予実比較</div>
+          <table style={{ borderCollapse:"collapse", fontSize:12, whiteSpace:"nowrap" }}>
+            <thead>
+              <tr style={{ background:C.surfaceHigh }}>
+                <th style={{ padding:"8px 14px", textAlign:"left", fontSize:11, color:C.textMuted, borderBottom:`1px solid ${C.border}`, position:"sticky", left:0, background:C.surfaceHigh, minWidth:80 }}>項目</th>
+                {visibleMonths.map(ym => {
+                  const isFirst = ym === periodStarts[getPeriodNum(ym)];
+                  return (
+                    <th key={ym} colSpan={2} style={{
+                      padding:"8px 10px", textAlign:"center", fontSize:11,
+                      color: isFirst ? C.red : C.textMuted,
+                      borderBottom:`1px solid ${C.border}`,
+                      borderLeft: isFirst ? `2px solid ${C.periodLine}` : `1px solid ${C.borderLight}`,
+                      minWidth:140,
+                    }}>{ym}</th>
+                  );
+                })}
+              </tr>
+              <tr style={{ background:C.surfaceHigh }}>
+                <th style={{ padding:"4px 14px", borderBottom:`1px solid ${C.border}`, position:"sticky", left:0, background:C.surfaceHigh }}></th>
+                {visibleMonths.map(ym => (
+                  <>
+                    <th key={`${ym}-b`} style={{ padding:"4px 8px", textAlign:"right", fontSize:10, color:C.textMuted, borderBottom:`1px solid ${C.border}`, borderLeft:`1px solid ${C.borderLight}` }}>予算</th>
+                    <th key={`${ym}-a`} style={{ padding:"4px 8px", textAlign:"right", fontSize:10, color:C.textMuted, borderBottom:`1px solid ${C.border}` }}>実績</th>
+                  </>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {/* 合計行 */}
+              <tr style={{ background:C.redDim, fontWeight:700 }}>
+                <td style={{ padding:"6px 14px", color:C.red, position:"sticky", left:0, background:C.redDim }}>合計</td>
+                {visibleMonths.map(ym => {
+                  const b = budgetByYm[ym]?._total || 0;
+                  const a = actualByYm[ym]?._total || 0;
+                  const isFirst = ym === periodStarts[getPeriodNum(ym)];
+                  return (
+                    <>
+                      <td key={`${ym}-b`} style={{ padding:"6px 8px", textAlign:"right", color:C.red, borderLeft: isFirst ? `2px solid ${C.periodLine}` : `1px solid ${C.borderLight}` }}>{fmtK(b)}</td>
+                      <td key={`${ym}-a`} style={{ padding:"6px 8px", textAlign:"right", color: a > 0 ? (a >= b ? C.green : C.red) : C.textMuted }}>
+                        {a > 0 ? fmtK(a) : '—'}
+                      </td>
+                    </>
+                  );
+                })}
+              </tr>
+              {/* 項目別行 */}
+              {ITEMS.map((it, idx) => (
+                <tr key={it.id} style={{ background:idx%2===0?"transparent":`${C.surfaceHigh}40`, borderBottom:`1px solid ${C.borderLight}` }}>
+                  <td style={{ padding:"5px 14px", position:"sticky", left:0, background:idx%2===0?C.surface:`${C.surfaceHigh}80` }}>
+                    <span style={{ display:"inline-flex", alignItems:"center", gap:5 }}>
+                      <span style={{ display:"inline-block", width:6, height:6, borderRadius:3, background:it.color }} />
+                      <span style={{ color:it.color, fontSize:11 }}>{it.label}</span>
+                    </span>
+                  </td>
+                  {visibleMonths.map(ym => {
+                    const b = budgetByYm[ym]?.[it.id] || 0;
+                    const a = actualByYm[ym]?.[it.id] || 0;
+                    const isFirst = ym === periodStarts[getPeriodNum(ym)];
+                    return (
+                      <>
+                        <td key={`${ym}-b`} style={{ padding:"5px 8px", textAlign:"right", color:C.textSub, borderLeft: isFirst ? `2px solid ${C.periodLine}` : `1px solid ${C.borderLight}` }}>{b > 0 ? fmtK(b) : '—'}</td>
+                        <td key={`${ym}-a`} style={{ padding:"5px 8px", textAlign:"right", color: a > 0 ? (a >= b ? C.green : C.red) : C.textMuted }}>
+                          {a > 0 ? fmtK(a) : '—'}
+                        </td>
+                      </>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   );
 }
