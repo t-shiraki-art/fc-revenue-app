@@ -1630,22 +1630,29 @@ function PriceChangePanel({ store, priceChanges, setPriceChanges, onPriceChangeA
       itemId: newChange.itemId,
       newValue: Number(newChange.newValue),
     };
-    if (onPriceChangeAdd) {
-      const saved = await onPriceChangeAdd(entry);
-      // App内のstateも更新（AppWrapperとの二重管理を解消）
-      setPriceChanges(prev => [...(prev||[]), saved || entry]);
-    } else {
-      setPriceChanges(prev => [...(prev||[]), entry]);
+    try {
+      if (onPriceChangeAdd) {
+        // AppWrapper側でsupabase保存＋setPriceChanges済み
+        await onPriceChangeAdd(entry);
+      } else {
+        setPriceChanges(prev => [...(prev||[]), entry]);
+      }
+      setNewChange({ fromYM:"", itemId:"royalty", newValue:"" });
+    } catch(e) {
+      console.error('変更追加エラー:', e);
     }
-    setNewChange({ fromYM:"", itemId:"royalty", newValue:"" });
   };
 
   const removeChange = async (id) => {
-    if (onPriceChangeDelete) {
-      await onPriceChangeDelete(id);
-      setPriceChanges(prev => (prev||[]).filter(c => c.id !== id));
-    } else {
-      setPriceChanges(prev => (prev||[]).filter(c => c.id !== id));
+    try {
+      if (onPriceChangeDelete) {
+        // AppWrapper側でsupabase削除＋setPriceChanges済み
+        await onPriceChangeDelete(id);
+      } else {
+        setPriceChanges(prev => (prev||[]).filter(c => c.id !== id));
+      }
+    } catch(e) {
+      console.error('変更削除エラー:', e);
     }
   };
 
