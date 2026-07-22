@@ -1529,6 +1529,7 @@ function MasterTab({ appData, priceChanges, setPriceChanges, onStoreUpdate, onSt
                 {/* 現在の月次金額確認・修正パネル */}
                 <CurrentAmountPanel key={`ca_${s.id}`} store={s} months={appData.months} onUpdate={(updatedStore) => {
                   setLocalStores(localStores.map(st => st.id===s.id ? updatedStore : st));
+                  if (onStoreUpdate) onStoreUpdate(updatedStore);
                   flash("✓ 金額を更新しました");
                 }} />
                 <PriceChangePanel key={`pc_${s.id}`} store={s} priceChanges={priceChanges} setPriceChanges={setPriceChanges} onPriceChangeAdd={onPriceChangeAdd} onPriceChangeDelete={onPriceChangeDelete} months={appData.months} />
