@@ -277,9 +277,8 @@ export default function App({
   onPriceChangeAdd    = null,
   onPriceChangeDelete = null,
   onActualsSave       = null,
-  // priceChangesはAppWrapper側で管理してpropsで渡す
+  // priceChangesはAppWrapper側で管理してpropsで渡す（setは不要）
   priceChanges        = [],
-  setPriceChanges     = null,
 }) {
   const [tab, setTab]             = useState(initialData ? "sim" : "upload");
   const [appData, setAppData]     = useState(initialData);
@@ -369,7 +368,7 @@ export default function App({
         {tab === "sim"     && appData && <SimTab     {...shared} />}
         {tab === "summary" && appData && <SummaryTab {...shared} />}
         {tab === "budget"  && appData && <BudgetTab  {...shared} onActualsSave={onActualsSave} />}
-        {tab === "master"  && appData && <MasterTab  appData={appData} priceChanges={priceChanges} setPriceChanges={setPriceChanges} onStoreUpdate={onStoreUpdate} onStoreDelete={onStoreDelete} onPriceChangeAdd={onPriceChangeAdd} onPriceChangeDelete={onPriceChangeDelete} />}
+        {tab === "master"  && appData && <MasterTab  appData={appData} priceChanges={priceChanges} onStoreUpdate={onStoreUpdate} onStoreDelete={onStoreDelete} onPriceChangeAdd={onPriceChangeAdd} onPriceChangeDelete={onPriceChangeDelete} />}
       </div>
     </div>
   );
@@ -1190,7 +1189,7 @@ function StoreInput({ value, onChange, placeholder, type="text", w=120 }) {
   );
 }
 
-function MasterTab({ appData, priceChanges, setPriceChanges, onStoreUpdate, onStoreDelete, onPriceChangeAdd, onPriceChangeDelete }) {
+function MasterTab({ appData, priceChanges, onStoreUpdate, onStoreDelete, onPriceChangeAdd, onPriceChangeDelete }) {
   const [localStores, setLocalStores] = useState(() => appData.stores);
   const [search,       setSearch]       = useState("");
   const [filterPref,   setFilterPref]   = useState("all");
@@ -1286,7 +1285,6 @@ function MasterTab({ appData, priceChanges, setPriceChanges, onStoreUpdate, onSt
   const confirmDelete = () => {
     if (!deleteModal) return;
     setLocalStores(localStores.filter(s => s.id !== deleteModal.id));
-    setPriceChanges((priceChanges||[]).filter(c => c.storeId !== deleteModal.id));
     if (onStoreDelete) onStoreDelete(deleteModal.id);
     setDeleteModal(null);
     flash("✓ 店舗を削除しました");
@@ -1532,7 +1530,7 @@ function MasterTab({ appData, priceChanges, setPriceChanges, onStoreUpdate, onSt
                   if (onStoreUpdate) onStoreUpdate(updatedStore);
                   flash("✓ 金額を更新しました");
                 }} />
-                <PriceChangePanel key={`pc_${s.id}`} store={s} priceChanges={priceChanges} setPriceChanges={setPriceChanges} onPriceChangeAdd={onPriceChangeAdd} onPriceChangeDelete={onPriceChangeDelete} months={appData.months} />
+                <PriceChangePanel key={`pc_${s.id}`} store={s} priceChanges={priceChanges} onPriceChangeAdd={onPriceChangeAdd} onPriceChangeDelete={onPriceChangeDelete} months={appData.months} />
                 </>
               );
 
@@ -1614,7 +1612,7 @@ function MasterTab({ appData, priceChanges, setPriceChanges, onStoreUpdate, onSt
 // ══════════════════════════════════════════════
 // 金額変更履歴パネル（MasterTabの編集行直下に表示）
 // ══════════════════════════════════════════════
-function PriceChangePanel({ store, priceChanges, setPriceChanges, onPriceChangeAdd, onPriceChangeDelete, months }) {
+function PriceChangePanel({ store, priceChanges, onPriceChangeAdd, onPriceChangeDelete, months }) {
   const storeChanges = (priceChanges||[]).filter(c => c.storeId === store.id)
     .sort((a,b) => a.fromYM < b.fromYM ? -1 : 1);
 
@@ -1624,19 +1622,13 @@ function PriceChangePanel({ store, priceChanges, setPriceChanges, onPriceChangeA
     if (!newChange.fromYM || !newChange.newValue) return;
     if (!/^\d{4}\/\d{2}$/.test(newChange.fromYM)) return;
     const entry = {
-      id: `pc_${Date.now()}`,
       storeId: store.id,
       fromYM: newChange.fromYM,
       itemId: newChange.itemId,
       newValue: Number(newChange.newValue),
     };
     try {
-      if (onPriceChangeAdd) {
-        // AppWrapper側でsupabase保存＋setPriceChanges済み
-        await onPriceChangeAdd(entry);
-      } else {
-        setPriceChanges(prev => [...(prev||[]), entry]);
-      }
+      await onPriceChangeAdd(entry);
       setNewChange({ fromYM:"", itemId:"royalty", newValue:"" });
     } catch(e) {
       console.error('変更追加エラー:', e);
@@ -1645,12 +1637,7 @@ function PriceChangePanel({ store, priceChanges, setPriceChanges, onPriceChangeA
 
   const removeChange = async (id) => {
     try {
-      if (onPriceChangeDelete) {
-        // AppWrapper側でsupabase削除＋setPriceChanges済み
-        await onPriceChangeDelete(id);
-      } else {
-        setPriceChanges(prev => (prev||[]).filter(c => c.id !== id));
-      }
+      await onPriceChangeDelete(id);
     } catch(e) {
       console.error('変更削除エラー:', e);
     }
