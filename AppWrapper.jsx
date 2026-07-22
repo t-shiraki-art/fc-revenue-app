@@ -162,6 +162,8 @@ export default function AppWrapper() {
       <App
         initialData={appData}
         initialPriceChanges={priceChanges}
+        externalPriceChanges={priceChanges}
+        setExternalPriceChanges={setPriceChanges}
         onXLSXLoaded={handleXLSXLoaded}
         onStoreUpdate={handleStoreUpdate}
         onPriceChangeAdd={handlePriceChangeAdd}
