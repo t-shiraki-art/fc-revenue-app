@@ -270,7 +270,6 @@ const pillSt = a => ({
 // ─────────────────────────────────────────────
 export default function App({
   initialData         = null,
-  initialPriceChanges = [],
   initialActuals      = {},
   onXLSXLoaded        = null,
   onStoreUpdate       = null,
@@ -278,17 +277,13 @@ export default function App({
   onPriceChangeAdd    = null,
   onPriceChangeDelete = null,
   onActualsSave       = null,
-  // priceChangesをAppWrapper側で管理する場合はこちらを使う
-  externalPriceChanges = null,
-  setExternalPriceChanges = null,
+  // priceChangesはAppWrapper側で管理してpropsで渡す
+  priceChanges        = [],
+  setPriceChanges     = null,
 }) {
   const [tab, setTab]             = useState(initialData ? "sim" : "upload");
   const [appData, setAppData]     = useState(initialData);
   const [showItems, setShowItems] = useState(Object.fromEntries(ITEMS.map(it=>[it.id,true])));
-  // 金額変更履歴（外部管理優先）
-  const [internalPriceChanges, setInternalPriceChanges] = useState(initialPriceChanges);
-  const priceChanges    = externalPriceChanges    ?? internalPriceChanges;
-  const setPriceChanges = setExternalPriceChanges ?? setInternalPriceChanges;
   // 実績データ: { storeId: { ym: { royalty,sv,... } } }
   const [actuals, setActuals] = useState(initialActuals);
 
