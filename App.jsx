@@ -1297,28 +1297,22 @@ function MasterTab({ appData, priceChanges, setPriceChanges, onStoreUpdate, onSt
     </th>
   );
 
-  // インライン編集フィールド（IME対応）
-  const composingEdit = useRef(false);
-  const composingAdd  = useRef(false);
+  // インライン編集フィールド（uncontrolled + onBlur方式 — IME・ローマ字両対応）
   const EF = ({k, placeholder, type="text", w=120}) => (
     <input
       type={type}
-      value={editForm[k] ?? ""}
+      defaultValue={editForm[k] ?? ""}
       placeholder={placeholder || k}
-      onCompositionStart={() => { composingEdit.current = true; }}
-      onCompositionEnd={e => { composingEdit.current = false; setEditForm(f => ({...f, [k]: e.target.value})); }}
-      onChange={e => { if (!composingEdit.current) setEditForm(f => ({...f, [k]: e.target.value})); }}
+      onBlur={e => setEditForm(f => ({...f, [k]: e.target.value}))}
       style={{...inputSt, width:w, fontSize:10}}
     />
   );
   const AF = ({k, placeholder, type="text", w=120}) => (
     <input
       type={type}
-      value={addForm[k] ?? ""}
+      defaultValue={addForm[k] ?? ""}
       placeholder={placeholder || k}
-      onCompositionStart={() => { composingAdd.current = true; }}
-      onCompositionEnd={e => { composingAdd.current = false; setAddForm(f => ({...f, [k]: e.target.value})); }}
-      onChange={e => { if (!composingAdd.current) setAddForm(f => ({...f, [k]: e.target.value})); }}
+      onBlur={e => setAddForm(f => ({...f, [k]: e.target.value}))}
       style={{...inputSt, width:w, fontSize:10}}
     />
   );
