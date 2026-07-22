@@ -1631,9 +1631,11 @@ function PriceChangePanel({ store, priceChanges, setPriceChanges, onPriceChangeA
       newValue: Number(newChange.newValue),
     };
     if (onPriceChangeAdd) {
-      await onPriceChangeAdd(entry);
+      const saved = await onPriceChangeAdd(entry);
+      // App内のstateも更新（AppWrapperとの二重管理を解消）
+      setPriceChanges(prev => [...(prev||[]), saved || entry]);
     } else {
-      setPriceChanges([...(priceChanges||[]), entry]);
+      setPriceChanges(prev => [...(prev||[]), entry]);
     }
     setNewChange({ fromYM:"", itemId:"royalty", newValue:"" });
   };
@@ -1641,8 +1643,9 @@ function PriceChangePanel({ store, priceChanges, setPriceChanges, onPriceChangeA
   const removeChange = async (id) => {
     if (onPriceChangeDelete) {
       await onPriceChangeDelete(id);
+      setPriceChanges(prev => (prev||[]).filter(c => c.id !== id));
     } else {
-      setPriceChanges((priceChanges||[]).filter(c => c.id !== id));
+      setPriceChanges(prev => (prev||[]).filter(c => c.id !== id));
     }
   };
 
