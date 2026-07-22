@@ -369,7 +369,7 @@ export default function App({
         {tab === "sim"     && appData && <SimTab     {...shared} />}
         {tab === "summary" && appData && <SummaryTab {...shared} />}
         {tab === "budget"  && appData && <BudgetTab  {...shared} onActualsSave={onActualsSave} />}
-        {tab === "master"  && appData && <MasterTab  appData={appData} priceChanges={priceChanges} setPriceChanges={setPriceChanges} onStoreUpdate={onStoreUpdate} onStoreDelete={onStoreDelete} />}
+        {tab === "master"  && appData && <MasterTab  appData={appData} priceChanges={priceChanges} setPriceChanges={setPriceChanges} onStoreUpdate={onStoreUpdate} onStoreDelete={onStoreDelete} onPriceChangeAdd={onPriceChangeAdd} onPriceChangeDelete={onPriceChangeDelete} />}
       </div>
     </div>
   );
@@ -1190,7 +1190,7 @@ function StoreInput({ value, onChange, placeholder, type="text", w=120 }) {
   );
 }
 
-function MasterTab({ appData, priceChanges, setPriceChanges, onStoreUpdate, onStoreDelete }) {
+function MasterTab({ appData, priceChanges, setPriceChanges, onStoreUpdate, onStoreDelete, onPriceChangeAdd, onPriceChangeDelete }) {
   const [localStores, setLocalStores] = useState(() => appData.stores);
   const [search,       setSearch]       = useState("");
   const [filterPref,   setFilterPref]   = useState("all");
@@ -1531,7 +1531,7 @@ function MasterTab({ appData, priceChanges, setPriceChanges, onStoreUpdate, onSt
                   setLocalStores(localStores.map(st => st.id===s.id ? updatedStore : st));
                   flash("✓ 金額を更新しました");
                 }} />
-                <PriceChangePanel key={`pc_${s.id}`} store={s} priceChanges={priceChanges} setPriceChanges={setPriceChanges} months={appData.months} />
+                <PriceChangePanel key={`pc_${s.id}`} store={s} priceChanges={priceChanges} setPriceChanges={setPriceChanges} onPriceChangeAdd={onPriceChangeAdd} onPriceChangeDelete={onPriceChangeDelete} months={appData.months} />
                 </>
               );
 
@@ -1613,13 +1613,13 @@ function MasterTab({ appData, priceChanges, setPriceChanges, onStoreUpdate, onSt
 // ══════════════════════════════════════════════
 // 金額変更履歴パネル（MasterTabの編集行直下に表示）
 // ══════════════════════════════════════════════
-function PriceChangePanel({ store, priceChanges, setPriceChanges, months }) {
+function PriceChangePanel({ store, priceChanges, setPriceChanges, onPriceChangeAdd, onPriceChangeDelete, months }) {
   const storeChanges = (priceChanges||[]).filter(c => c.storeId === store.id)
     .sort((a,b) => a.fromYM < b.fromYM ? -1 : 1);
 
   const [newChange, setNewChange] = useState({ fromYM:"", itemId:"royalty", newValue:"" });
 
-  const addChange = () => {
+  const addChange = async () => {
     if (!newChange.fromYM || !newChange.newValue) return;
     if (!/^\d{4}\/\d{2}$/.test(newChange.fromYM)) return;
     const entry = {
@@ -1629,11 +1629,21 @@ function PriceChangePanel({ store, priceChanges, setPriceChanges, months }) {
       itemId: newChange.itemId,
       newValue: Number(newChange.newValue),
     };
-    setPriceChanges([...(priceChanges||[]), entry]);
+    if (onPriceChangeAdd) {
+      await onPriceChangeAdd(entry);
+    } else {
+      setPriceChanges([...(priceChanges||[]), entry]);
+    }
     setNewChange({ fromYM:"", itemId:"royalty", newValue:"" });
   };
 
-  const removeChange = id => setPriceChanges((priceChanges||[]).filter(c => c.id !== id));
+  const removeChange = async (id) => {
+    if (onPriceChangeDelete) {
+      await onPriceChangeDelete(id);
+    } else {
+      setPriceChanges((priceChanges||[]).filter(c => c.id !== id));
+    }
+  };
 
   const itemLabel = id => ITEMS.find(it=>it.id===id)?.label || id;
 
