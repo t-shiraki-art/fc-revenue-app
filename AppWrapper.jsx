@@ -82,6 +82,15 @@ export default function AppWrapper() {
     }
   }, [])
 
+  const handleStoreDelete = useCallback(async (storeId) => {
+    try {
+      await storesDB.delete(storeId)
+      setPriceChanges(prev => prev.filter(c => c.storeId !== storeId))
+    } catch (e) {
+      console.error('店舗削除エラー:', e)
+    }
+  }, [])
+
   const handleStoreUpdate = useCallback(async (updatedStore) => {
     try {
       await storesDB.upsert(updatedStore)
@@ -162,9 +171,9 @@ export default function AppWrapper() {
       <App
         initialData={appData}
         priceChanges={priceChanges}
-        setPriceChanges={setPriceChanges}
         onXLSXLoaded={handleXLSXLoaded}
         onStoreUpdate={handleStoreUpdate}
+        onStoreDelete={handleStoreDelete}
         onPriceChangeAdd={handlePriceChangeAdd}
         onPriceChangeDelete={handlePriceChangeDelete}
       />
