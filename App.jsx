@@ -1161,6 +1161,35 @@ const EMPTY_STORE = () => ({
   monthly: {},
 });
 
+// MasterTab用 テキスト入力コンポーネント（外部定義でIME・ローマ字両対応）
+function StoreInput({ value, onChange, placeholder, type="text", w=120 }) {
+  const [local, setLocal] = useState(value ?? "");
+  const composing = useRef(false);
+  const prevValue = useRef(value);
+  if (prevValue.current !== value) {
+    prevValue.current = value;
+    setLocal(value ?? "");
+  }
+  return (
+    <input
+      type={type}
+      value={local}
+      placeholder={placeholder}
+      onCompositionStart={() => { composing.current = true; }}
+      onCompositionEnd={e => {
+        composing.current = false;
+        setLocal(e.target.value);
+        onChange(e.target.value);
+      }}
+      onChange={e => {
+        setLocal(e.target.value);
+        if (!composing.current) onChange(e.target.value);
+      }}
+      style={{...inputSt, width:w, fontSize:10}}
+    />
+  );
+}
+
 function MasterTab({ appData, priceChanges, setPriceChanges, onStoreUpdate, onStoreDelete }) {
   const [localStores, setLocalStores] = useState(() => appData.stores);
   const [search,       setSearch]       = useState("");
@@ -1297,23 +1326,23 @@ function MasterTab({ appData, priceChanges, setPriceChanges, onStoreUpdate, onSt
     </th>
   );
 
-  // インライン編集フィールド（uncontrolled + onBlur方式 — IME・ローマ字両対応）
+  // インライン編集フィールド（StoreInputコンポーネントを使用）
   const EF = ({k, placeholder, type="text", w=120}) => (
-    <input
+    <StoreInput
       type={type}
-      defaultValue={editForm[k] ?? ""}
+      value={editForm[k] ?? ""}
       placeholder={placeholder || k}
-      onBlur={e => setEditForm(f => ({...f, [k]: e.target.value}))}
-      style={{...inputSt, width:w, fontSize:10}}
+      onChange={v => setEditForm(f => ({...f, [k]: v}))}
+      w={w}
     />
   );
   const AF = ({k, placeholder, type="text", w=120}) => (
-    <input
+    <StoreInput
       type={type}
-      defaultValue={addForm[k] ?? ""}
+      value={addForm[k] ?? ""}
       placeholder={placeholder || k}
-      onBlur={e => setAddForm(f => ({...f, [k]: e.target.value}))}
-      style={{...inputSt, width:w, fontSize:10}}
+      onChange={v => setAddForm(f => ({...f, [k]: v}))}
+      w={w}
     />
   );
 
